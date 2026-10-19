@@ -1,0 +1,11 @@
+{
+  "identifier": "main",
+  "description": "Local main window and explicit cleaner commands only",
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "allow-bootstrap", "allow-scan", "allow-cancel-scan", "allow-choose-root",
+    "allow-remove-root", "allow-set-appearance", "allow-trash-items", "allow-restore-item",
+    "allow-reveal-item", "allow-open-trash", "allow-open-privacy-settings"
+  ]
+}
