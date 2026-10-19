@@ -2,6 +2,7 @@
 mod cleanup;
 mod model;
 mod native;
+mod permissions;
 mod scan;
 
 use model::*;
@@ -149,14 +150,27 @@ fn open_privacy_settings(full_disk_access: bool) -> Result<(), String> {
     native::open_privacy_settings(full_disk_access)
 }
 
-fn main() {
-    tauri::Builder::default()
-        .setup(|app| {
-            let state = AppState::new(app.path().home_dir()?, app.path().app_data_dir()?)
-                .map_err(std::io::Error::other)?;
-            app.manage(state);
-            Ok(())
-        })
+#[tauri::command]
+async fn check_permissions(app: AppHandle) -> Result<Vec<permissions::AccessCheck>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _guard = state.start()?;
+        let roots = state
+            .store
+            .lock()
+            .map_err(|e| e.to_string())?
+            .saved
+            .settings
+            .roots
+            .clone();
+        Ok(permissions::check_access(&state.home, &roots))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             bootstrap,
             scan,
@@ -169,8 +183,13 @@ fn main() {
             reveal_item,
             open_trash,
             open_update,
-            open_privacy_settings
+            open_privacy_settings,
+            check_permissions
         ])
-        .run(tauri::generate_context!())
-        .expect("Mac Cleaner could not start");
+        .build(tauri::generate_context!())?;
+    let state = AppState::new(app.path().home_dir()?, app.path().app_data_dir()?)
+        .map_err(std::io::Error::other)?;
+    app.manage(state);
+    app.run(|_, _| {});
+    Ok(())
 }

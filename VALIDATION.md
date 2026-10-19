@@ -2,6 +2,24 @@
 
 Environment: Apple Silicon, macOS 27.0.1, Rust 1.99.1, Node.js 22.23.2, Tauri 2.12.4. macOS 13 is the configured deployment minimum; older macOS and Intel hardware have not been tested.
 
+## Uninstall associated files fix
+
+- Selecting an app now includes eligible detected associated data and user caches; individual opt-out, bulk selection, search/sort grouping, and independent user-cache cleanup are covered by UI tests.
+- Discovery fixtures cover both user and system Libraries: named/bundle-ID support data, preferences and host UUID preferences, logs, containers, scripts, web data, launch configuration, and system caches. Shared aliases, vendor prefixes, helper suffixes, Apple data, group containers, and symlinks are excluded.
+- Production frontend build, Rust tests (11 passed, 2 existing opt-in tests skipped before adding the native uninstall test), formatting, Clippy with warnings denied, and diff whitespace checks passed. Chromium and WebKit each passed all 9 UI scenarios. The uninstall screenshot was visually inspected.
+- The new opt-in native uninstall test was explicitly run and passed: a temporary app, support folder, and cache moved through macOS Trash and restored; cache cleanup also worked without selecting its app, associated support data alone was rejected, and unselected shared data remained intact.
+- No installed app or real app data was removed. Shared group containers, privileged helper binaries, service unloading/registration, and arbitrary custom data paths are outside automatic detection. No release DMG was rebuilt.
+
+## Permission flow update
+
+- Production frontend build and debug macOS `.app` bundle: passed. Verified that the bundled Info.plist contains the Desktop, Documents, and Downloads usage descriptions.
+- Chromium and WebKit: 9 scenarios passed in each engine, including access Success/Failed/missing results, loading, retry after command failure, escaped errors, refresh after returning from System Settings, and light/dark layouts at 1180/900/390 px.
+- Rust: 10 tests passed; 2 existing opt-in integration tests were not run. New permission tests use temporary fixtures and cover readable, missing, invalid, denied, and subsequently restored access without changing file contents. The native registered-app lookup required running outside the sandbox.
+- Formatting, Clippy with warnings denied, and diff whitespace checks: passed.
+- macOS consent prompts, System Settings navigation, app-bundle selection in Finder, and a live native focus-return refresh were not tested interactively. Filesystem checks report directory readability, not the global Full Disk Access switch or write permission.
+
+The remaining sections record earlier validation and its limitations.
+
 ## Backend and build
 
 - TypeScript check and Vite production build: passed.

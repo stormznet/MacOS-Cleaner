@@ -98,6 +98,7 @@ fn valid_bundle_id(bundle: &str) -> bool {
 }
 
 struct CacheApp {
+    id: String,
     name: String,
     aliases: Vec<String>,
 }
@@ -121,6 +122,89 @@ fn cache_owner(folder: &str, apps: &HashMap<String, CacheApp>) -> Option<(String
         return None;
     }
     Some((bundle.clone(), app.name.clone()))
+}
+
+fn discover_app_data(
+    home: &Path,
+    system_library: &Path,
+    apps: &HashMap<String, CacheApp>,
+    warnings: &mut Vec<String>,
+) -> Vec<Item> {
+    let user_library = home.join("Library");
+    let mut items = vec![];
+    for library in [user_library.as_path(), system_library] {
+        for relative in [
+            "Application Support",
+            "Caches",
+            "Preferences",
+            "Preferences/ByHost",
+            "Saved Application State",
+            "Logs",
+            "Containers",
+            "Application Scripts",
+            "HTTPStorages",
+            "WebKit",
+            "LaunchAgents",
+            "LaunchDaemons",
+        ] {
+            // User caches keep one candidate shared by the cache and uninstall screens.
+            if relative == "Caches" && library == user_library {
+                continue;
+            }
+            let root = library.join(relative);
+            for path in children(&root, warnings) {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                let owner = match relative {
+                    "Application Support" | "Logs" | "Caches" => cache_owner(&name, apps),
+                    _ => {
+                        let key = match relative {
+                            "Preferences" | "LaunchAgents" | "LaunchDaemons" => {
+                                name.strip_suffix(".plist")
+                            }
+                            "Saved Application State" => name.strip_suffix(".savedState"),
+                            "Preferences/ByHost" => name.strip_suffix(".plist").and_then(|stem| {
+                                let (bundle, host) = stem.rsplit_once('.')?;
+                                (host.len() == 36
+                                    && host.bytes().enumerate().all(|(i, c)| {
+                                        if [8, 13, 18, 23].contains(&i) {
+                                            c == b'-'
+                                        } else {
+                                            c.is_ascii_hexdigit()
+                                        }
+                                    }))
+                                .then_some(bundle)
+                            }),
+                            "HTTPStorages" => {
+                                Some(name.strip_suffix(".binarycookies").unwrap_or(&name))
+                            }
+                            _ => Some(name.as_ref()),
+                        };
+                        key.and_then(|bundle| {
+                            apps.get(bundle)
+                                .map(|app| (bundle.into(), app.name.clone()))
+                        })
+                    }
+                };
+                let Some((bundle, name)) = owner else {
+                    continue;
+                };
+                if bundle.starts_with("com.apple.") || !valid_bundle_id(&bundle) {
+                    continue;
+                }
+                match placeholder(path, root.clone(), "apps",
+                    &format!("{relative} for {name} ({bundle}), matched by bundle identifier or unique app name. May include local documents, settings, or sign-in data."),
+                    "Selected for uninstall. Uncheck this item to keep its app data; otherwise it will move to Trash.") {
+                    Ok(mut item) => {
+                        item.app_parent = Some(apps[&bundle].id.clone());
+                        item.bundle_id = Some(bundle);
+                        items.push(item);
+                    }
+                    Err(error) => warnings.push(error),
+                }
+            }
+        }
+    }
+    items
 }
 
 pub fn discover_nodes(
@@ -350,7 +434,7 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
                     if bundle.is_empty() || bundle == "com.maccleaner.desktop" {
                         continue;
                     }
-                    let Ok(mut item) = placeholder(path.clone(), app_root.clone(), "apps", "Installed application bundle. Your documents are kept. Apps with helpers or extensions may require their own uninstaller.", "The application will no longer be available until restored or reinstalled.") else { continue; };
+                    let Ok(mut item) = placeholder(path.clone(), app_root.clone(), "apps", "Installed application bundle. Selecting this app also selects its detected associated data. Review the files below it and uncheck anything to keep. Apps with helpers or extensions may require their own uninstaller.", "The application will no longer be available until restored or reinstalled.") else { continue; };
                     item.bundle_id = Some(bundle.into());
                     item.version = info["version"].as_str().map(str::to_owned);
                     if let Some(name) = info["name"].as_str().filter(|s| !s.is_empty()) {
@@ -361,10 +445,10 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
                         item.issue =
                             Some("Apple applications are inspection-only in this version".into());
                     }
-                    let id = item.id.clone();
                     known_apps.insert(
                         bundle.to_string(),
                         CacheApp {
+                            id: item.id.clone(),
                             name: item.name.clone(),
                             aliases: vec![
                                 item.name.clone(),
@@ -377,20 +461,6 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
                         },
                     );
                     add(item);
-                    if !bundle.starts_with("com.apple.") && valid_bundle_id(bundle) {
-                        for (rel, explanation) in [
-                            (format!("Library/Preferences/{bundle}.plist"), "Saved preferences for this app. Removing them resets app settings."),
-                            (format!("Library/Application Support/{bundle}"), "App support data matched by exact bundle identifier. This may include local user data."),
-                            (format!("Library/Saved Application State/{bundle}.savedState"), "Saved window and session state for this app."),
-                        ] {
-                            let related = state.home.join(rel);
-                            if related.exists() {
-                                if let Ok(mut child) = placeholder(related.clone(), related.parent().unwrap().into(), "apps", explanation, "Contains app data. Review separately before selecting.") {
-                                    child.bundle_id = Some(bundle.into()); child.app_parent = Some(id.clone()); add(child);
-                                }
-                            }
-                        }
-                    }
                 } else if !hidden_or_bundle(&path)
                     && path.components().count() < app_root.components().count() + 3
                 {
@@ -398,6 +468,14 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
                 }
             }
         }
+    }
+    for item in discover_app_data(
+        &state.home,
+        Path::new("/Library"),
+        &known_apps,
+        &mut warnings,
+    ) {
+        add(item);
     }
     emit(ScanEvent::Phase {
         message: "Checking application caches…".into(),
@@ -433,6 +511,10 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
         if let Some((bundle, name)) = owner {
             item.name = format!("{name} cache");
             item.description = format!("Cached data for {name} ({bundle}). The app may rebuild or download this data again.");
+            item.app_parent = known_apps
+                .get(&bundle)
+                .filter(|_| !bundle.starts_with("com.apple."))
+                .map(|app| app.id.clone());
             item.bundle_id = Some(bundle);
             if folder_name.ends_with(".ShipIt") {
                 item.name = format!("{name} updater cache");
@@ -498,11 +580,16 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     #[test]
-    fn cache_owners_match_names_and_updaters_without_guessing_shared_owners() {
+    fn finds_app_data_in_both_libraries_without_matching_shared_or_similar_names() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let home = root.join("home");
+        let system_library = root.join("Library");
         let apps = HashMap::from([
             (
                 "com.example.Editor".into(),
                 CacheApp {
+                    id: "editor".into(),
                     name: "Editor Pro".into(),
                     aliases: vec!["Editor Pro".into(), "Editor".into(), "Shared".into()],
                 },
@@ -510,6 +597,106 @@ mod tests {
             (
                 "com.example.Other".into(),
                 CacheApp {
+                    id: "other".into(),
+                    name: "Other".into(),
+                    aliases: vec!["Other".into(), "Shared".into()],
+                },
+            ),
+            (
+                "com.apple.Fixture".into(),
+                CacheApp {
+                    id: "apple".into(),
+                    name: "Apple".into(),
+                    aliases: vec![],
+                },
+            ),
+        ]);
+        let expected = [
+            "Application Support/Editor",
+            "Application Support/com.example.Editor",
+            "Preferences/com.example.Editor.plist",
+            "Preferences/ByHost/com.example.Editor.01234567-89AB-CDEF-0123-456789ABCDEF.plist",
+            "Saved Application State/com.example.Editor.savedState",
+            "Logs/editor pro",
+            "Containers/com.example.Editor",
+            "Application Scripts/com.example.Editor",
+            "HTTPStorages/com.example.Editor",
+            "HTTPStorages/com.example.Editor.binarycookies",
+            "WebKit/com.example.Editor",
+            "LaunchAgents/com.example.Editor.plist",
+            "LaunchDaemons/com.example.Editor.plist",
+        ];
+        let excluded = [
+            "Application Support/Shared",
+            "Application Support/com.example",
+            "Application Support/Editor Helper",
+            "Application Support/com.apple.Fixture",
+            "Group Containers/com.example.Editor",
+            "Containers/Editor",
+            "Preferences/com.example.Editor.Helper.plist",
+            "Preferences/ByHost/com.example.Editor.Helper.plist",
+            "Application Support/Linked Editor",
+        ];
+        for library in [home.join("Library"), system_library.clone()] {
+            for relative in expected.iter().chain(excluded[..excluded.len() - 1].iter()) {
+                let path = library.join(relative);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext == "plist" || ext == "binarycookies")
+                {
+                    fs::write(path, "fixture").unwrap();
+                } else {
+                    fs::create_dir(path).unwrap();
+                }
+            }
+            std::os::unix::fs::symlink(&root, library.join("Application Support/Linked Editor"))
+                .unwrap();
+        }
+        // A matching name still cannot authorize traversing a symlink.
+        let mut apps = apps;
+        apps.get_mut("com.example.Editor")
+            .unwrap()
+            .aliases
+            .push("Linked Editor".into());
+        fs::create_dir_all(system_library.join("Caches/com.example.Editor.ShipIt")).unwrap();
+        fs::create_dir_all(home.join("Library/Caches/com.example.Editor")).unwrap();
+        let mut warnings = vec![];
+        let items = discover_app_data(&home, &system_library, &apps, &mut warnings);
+        let paths: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();
+        assert_eq!(paths.len(), expected.len() * 2 + 1);
+        for library in [home.join("Library"), system_library.clone()] {
+            for relative in expected {
+                assert!(paths.contains(&library.join(relative)), "{relative}");
+            }
+            for relative in excluded {
+                assert!(!paths.contains(&library.join(relative)), "{relative}");
+            }
+        }
+        assert!(paths.contains(&system_library.join("Caches/com.example.Editor.ShipIt")));
+        assert!(!paths.contains(&home.join("Library/Caches/com.example.Editor")));
+        assert!(items
+            .iter()
+            .all(|item| item.app_parent.as_deref() == Some("editor")
+                && item.bundle_id.as_deref() == Some("com.example.Editor")));
+        assert_eq!(warnings.len(), 2);
+    }
+
+    #[test]
+    fn cache_owners_match_names_and_updaters_without_guessing_shared_owners() {
+        let apps = HashMap::from([
+            (
+                "com.example.Editor".into(),
+                CacheApp {
+                    id: "editor".into(),
+                    name: "Editor Pro".into(),
+                    aliases: vec!["Editor Pro".into(), "Editor".into(), "Shared".into()],
+                },
+            ),
+            (
+                "com.example.Other".into(),
+                CacheApp {
+                    id: "other".into(),
                     name: "Other".into(),
                     aliases: vec!["Other".into(), "shared".into()],
                 },

@@ -55,7 +55,7 @@ pub fn trash_selected(state: &AppState, ids: &[String]) -> Result<Vec<Record>, S
             }
         }
         if let Some(parent) = &item.app_parent {
-            if !ids.contains(parent) {
+            if item.category == "apps" && !ids.contains(parent) {
                 return Err("Select the app bundle together with its associated files".into());
             }
         }
@@ -346,6 +346,67 @@ mod tests {
         record.status = "restoring".into();
         reconcile(std::slice::from_mut(&mut record), &home);
         assert_eq!(record.status, "restored");
+    }
+
+    #[test]
+    #[ignore = "Opt-in integration test moves only temporary app/data fixtures through macOS Trash"]
+    fn native_uninstall_roundtrip_includes_data_and_keeps_cache_cleanup_independent() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let home = fs::canonicalize(std::env::var("HOME").unwrap()).unwrap();
+        let state = AppState::new(home, root.join("history")).unwrap();
+        for (id, relative, category) in [
+            ("app", "Applications/Fixture.app", "apps"),
+            ("support", "Library/Application Support/Fixture", "apps"),
+            ("cache", "Library/Caches/Fixture", "caches"),
+        ] {
+            let path = root.join(relative);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("fixture.txt"), id).unwrap();
+            let mut item = candidate(&path, path.parent().unwrap());
+            item.id = id.into();
+            item.category = category.into();
+            item.bundle_id = Some("invalid.maccleaner.uninstall-fixture".into());
+            if id != "app" {
+                item.app_parent = Some("app".into());
+            }
+            state.store.lock().unwrap().items.insert(id.into(), item);
+        }
+        let keep = root.join("Library/Application Support/Shared Vendor");
+        fs::create_dir_all(&keep).unwrap();
+        fs::write(keep.join("keep.txt"), "unselected").unwrap();
+        assert!(trash_selected(&state, &["support".into()])
+            .unwrap_err()
+            .contains("Select the app"));
+        let history = trash_selected(&state, &["cache".into()]).unwrap();
+        assert_eq!(history[0].status, "trashed", "{:?}", history[0].error);
+        restore(&state, &history[0].id).unwrap();
+        let path = root.join("Library/Caches/Fixture");
+        let mut cache = candidate(&path, path.parent().unwrap());
+        cache.id = "cache".into();
+        cache.category = "caches".into();
+        cache.app_parent = Some("app".into());
+        state
+            .store
+            .lock()
+            .unwrap()
+            .items
+            .insert("cache".into(), cache);
+        let history =
+            trash_selected(&state, &["support".into(), "cache".into(), "app".into()]).unwrap();
+        let removed = &history[1..];
+        assert_eq!(removed.len(), 3);
+        assert!(removed[0].original.ends_with("Fixture.app"));
+        for record in removed {
+            assert_eq!(record.status, "trashed", "{:?}", record.error);
+            assert!(!record.original.exists());
+            restore(&state, &record.id).unwrap();
+            assert!(record.original.join("fixture.txt").exists());
+        }
+        assert_eq!(
+            fs::read_to_string(keep.join("keep.txt")).unwrap(),
+            "unselected"
+        );
     }
 
     #[test]

@@ -85,9 +85,13 @@ int mc_open_update(void) {
 
 int mc_open_privacy_settings(int full_disk_access) {
     @autoreleasepool {
+        NSURL *bundle = NSBundle.mainBundle.bundleURL;
+        if (full_disk_access && [bundle.pathExtension isEqualToString:@"app"]) {
+            [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[bundle]];
+        }
         NSString *address = full_disk_access
             ? @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"
-            : @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension";
+            : @"x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_FilesAndFolders";
         return [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:address]];
     }
 }

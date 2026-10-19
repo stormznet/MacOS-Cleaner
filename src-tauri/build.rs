@@ -21,6 +21,7 @@ fn main() {
             "open_trash",
             "open_update",
             "open_privacy_settings",
+            "check_permissions",
         ]),
     ))
     .expect("could not build Tauri configuration");

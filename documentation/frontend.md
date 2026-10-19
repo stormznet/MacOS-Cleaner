@@ -29,6 +29,7 @@ The frontend uses TypeScript and the DOM directly. There is no React component t
 | `query`, `sort` | Current name/path filter and sort mode |
 | `detail` | Scan ID of the item shown in the details pane, or null |
 | `error` | Dismissible operation error |
+| `permissions`, `permissionError`, `recheckPermissions` | Last per-folder access checks, check failure, and one pending refresh after returning from System Settings |
 | `ready` | Whether bootstrap or browser initialization succeeded |
 
 `reviewIds` is a separate snapshot of IDs taken when review opens. `renderTimer` batches scan rendering; `toastTimer` controls status-message dismissal. These are not persisted.
@@ -43,11 +44,11 @@ The frontend uses TypeScript and the DOM directly. There is no React component t
 | `warningPanel()` | Expandable notices with scrollable details |
 | `progress()` | Native progress element, percentage, phase and checked counts; discovery, running, completed, and stopped states |
 | `overview()` | Storage heading, proportional chart, category cards, uninstall link, and Trash explanation |
-| `visibleItems()` | Filter active category by case-insensitive name/path, then sort by size, name, or oldest modification |
+| `visibleItems()` | Filter active category by case-insensitive name/path, then sort by size, name, or oldest modification; apps match their associated data too and reveal all children beneath checked parents |
 | `detailPanel()` | Selected row's explanation, consequences, full path, issue, version, date, and Finder action |
 | `categoryPage()` | Category heading, project-folder prompt or uninstall note, search/sort, selectable list, details |
 | `historyPage()` | Reversed history, status labels, recorded errors, Finder/Restore controls, Open Trash |
-| `settingsPage()` | Project-root list, add/remove controls, macOS permission links/guidance, appearance, local-processing facts |
+| `settingsPage()` | Project-root list, add/remove controls, macOS access checks/results and permission links, appearance, local-processing facts |
 | `footer()` | Total eligible selection, Clear, and Review; hidden on settings/history |
 | `render()` | Replace the root markup, preserve scroll and control focus, restore the search caret |
 
@@ -87,15 +88,15 @@ The delegated handlers cover all remaining interactions:
 | --- | --- |
 | Search `input` | Update query and render while preserving input focus/caret |
 | Sort `change` | Update sort and render |
-| Item checkbox `change` | Reject selecting associated data without its app; update selection; deselect children when the app is deselected |
-| Visible-items checkbox `change` | Change eligible visible parentless selections, then clear children whose parent is no longer selected |
+| Item checkbox `change` | Select an app together with eligible detected associated data; allow individual child opt-out; reject associated uninstall data without its app; user caches remain independently selectable; deselect children with their app |
+| Visible-items checkbox `change` | Select/clear eligible visible items; on the uninstall screen include each app's eligible children through the same selection helper |
 | Navigation button `click` | Change page, clear query/details, render, and scroll to top; retain selection and sort |
 | Appearance button `click` | Save through `set_appearance` on desktop; update memory only in preview |
 | Scan/cancel buttons | Start scanning or send `cancel_scan` and display “Stopping scan…” |
 | Remove-root button | Remove by index, replace settings, clear results/selection/summary |
 | Details buttons | Open and scroll the pane into view, focus Close details; closing returns focus/visibility to the original row |
 | Finder/Trash buttons | Invoke ID-based reveal or open Trash; show an availability message in preview |
-| Permission buttons | Invoke `open_privacy_settings` with `fullDiskAccess` false or true; show an availability message in preview |
+| Permission buttons | Request/check invokes `check_permissions`, holds the `permissions` busy state, and reports loading/results/failures; System Settings invokes `open_privacy_settings` with `fullDiskAccess` false or true and marks access for rechecking on window focus; preview explains native availability |
 | Review/Clear buttons | Open exact-selection review or clear selection |
 | Restore button | Set busy, invoke by history ID, update history, report the returned per-item result, clear busy |
 | Dismiss-error button | Clear the error banner |

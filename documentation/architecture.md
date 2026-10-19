@@ -66,6 +66,8 @@ Paths below are relative to the project root. Generated dependency/build directo
 | [src-tauri/src/scan.rs](../src-tauri/src/scan.rs) | Discovery, app matching, size measurement, scan events, scanner tests | [Backend](backend.md) |
 | [src-tauri/src/cleanup.rs](../src-tauri/src/cleanup.rs) | Selection validation, Trash, reconciliation, restore, safety tests | [Backend](backend.md) |
 | [src-tauri/src/native.rs](../src-tauri/src/native.rs) | Rust FFI declarations and native-response conversion | [Backend](backend.md) |
+| [src-tauri/src/permissions.rs](../src-tauri/src/permissions.rs) | Read-only folder access checks and per-location results | [IPC](api.md) |
+| [src-tauri/Info.plist](../src-tauri/Info.plist) | macOS Desktop, Documents, and Downloads permission prompt descriptions | [Safety](safety.md) |
 | [src-tauri/native/macos.m](../src-tauri/native/macos.m) | Foundation/AppKit bridge implementation | [Backend](backend.md) |
 | [src-tauri/build.rs](../src-tauri/build.rs) | Compile Objective-C, link frameworks, declare app commands for Tauri permissions | [Development](development.md) |
 | [src-tauri/Cargo.toml](../src-tauri/Cargo.toml) | Rust package, dependencies, release profile, custom-protocol feature | [Development](development.md) |

@@ -9,6 +9,7 @@ export interface HistoryItem {
   bytes: number; timestamp: number; status: string; error: string | null;
 }
 export interface Settings { roots: string[]; appearance: 'system' | 'dark' | 'light' }
+export interface AccessCheck { name: string; path: string; status: 'success' | 'failed' | 'unavailable'; message: string }
 export interface Summary { elapsedMs: number; cancelled: boolean; count: number; warnings: string[] }
 export interface ScanProgress { processed: number; total: number }
 export type ScanEvent = { kind: 'item'; item: Item } | { kind: 'phase' | 'warning'; message: string } | ({ kind: 'progress' } & ScanProgress);
@@ -18,7 +19,7 @@ export const categories = {
   xcode: { name: 'Xcode', short: 'Xcode build data', icon: 'tools', description: 'Build products and indexes that Xcode creates.', consequence: 'Rebuild required' },
   packages: { name: 'Package caches', short: 'Package caches', icon: 'archive', description: 'Downloads your package managers can fetch again.', consequence: 'Download required' },
   caches: { name: 'App caches', short: 'App caches', icon: 'cache', description: 'Temporary app data. Review the owner before removing.', consequence: 'Review the app' },
-  apps: { name: 'Applications', short: 'Applications', icon: 'app', description: 'App bundles and separately selectable associated data.', consequence: 'Uninstall an app' },
+  apps: { name: 'Applications', short: 'Applications', icon: 'app', description: 'Uninstall apps with their detected associated files.', consequence: 'Uninstall an app' },
 } as const;
 export type Category = keyof typeof categories;
 export type Page = Category | 'overview' | 'history' | 'settings';

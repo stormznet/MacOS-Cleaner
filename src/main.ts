@@ -1,6 +1,6 @@
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { bytes, categories, escape as e, selectedItems, storageTotal, type Category, type HistoryItem, type Item, type Page, type ScanEvent, type ScanProgress, type Settings, type Summary } from './types';
+import { bytes, categories, escape as e, selectedItems, storageTotal, type AccessCheck, type Category, type HistoryItem, type Item, type Page, type ScanEvent, type ScanProgress, type Settings, type Summary } from './types';
 import { icon } from './icons';
 import { checkUpdate } from './updates';
 import './style.css';
@@ -11,11 +11,12 @@ const dialog = document.querySelector<HTMLDialogElement>('#review')!;
 const state = {
   page: 'overview' as Page, items: [] as Item[], selected: new Set<string>(),
   settings: { roots: [], appearance: 'system' } as Settings, history: [] as HistoryItem[],
-  busy: '' as '' | 'folder' | 'scan' | 'trash' | 'restore', summary: null as Summary | null,
+  busy: '' as '' | 'folder' | 'scan' | 'trash' | 'restore' | 'permissions', summary: null as Summary | null,
   scanProgress: null as ScanProgress | null,
   phase: '', warnings: [] as string[], query: '', sort: 'size', detail: null as string | null,
   error: '', ready: false,
   updateVersion: null as string | null, checkingUpdate: false, updateStatus: '',
+  permissions: null as AccessCheck[] | null, permissionError: '', recheckPermissions: false,
 };
 let toastTimer: ReturnType<typeof setTimeout>;
 let renderTimer: ReturnType<typeof setTimeout> | undefined;
@@ -26,10 +27,16 @@ function notify(message: string) {
   toast.textContent = message; toast.classList.add('visible');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('visible'), 6500);
 }
-function total(category: string) { return storageTotal(state.items.filter(i => i.category === category)); }
-function count(category: string) { return state.items.filter(i => i.category === category && !i.appParent).length; }
+function total(category: string) { return storageTotal(state.items.filter(i => i.category === category || category === 'apps' && i.appParent)); }
+function count(category: string) { return state.items.filter(i => i.category === category && (category !== 'apps' || !i.appParent)).length; }
 function selection() { return selectedItems(state.items, state.selected); }
 function canSelect(item: Item) { return item.selectable && item.complete && !state.busy; }
+function selectItem(item: Item, checked: boolean) {
+  for (const candidate of [item, ...state.items.filter(i => i.appParent === item.id)]) {
+    if (checked && canSelect(candidate)) state.selected.add(candidate.id);
+    else state.selected.delete(candidate.id);
+  }
+}
 function date(time: number) { return time ? new Date(time * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not available'; }
 function tile(key: Category) { return `<span class="tile ${key}">${icon(categories[key].icon)}</span>`; }
 function disable() { return state.busy || !state.ready ? 'disabled' : ''; }
@@ -70,6 +77,15 @@ async function refreshUpdate() {
 }
 function warningPanel() {
   return state.warnings.length ? `<details class="warnings"><summary>${icon('info')} ${state.warnings.length} scan notice${state.warnings.length === 1 ? '' : 's'}. Some locations could not be scanned.</summary><ul>${state.warnings.map(w => `<li>${e(w)}</li>`).join('')}</ul><button class="button secondary" data-page="settings">Review folders and permissions</button></details>` : '';
+}
+
+async function refreshPermissions() {
+  if (!desktop) { notify('macOS permissions are available in the desktop app.'); return; }
+  if (state.busy) return;
+  state.busy = 'permissions'; state.permissions = null; state.permissionError = ''; render();
+  try { state.permissions = await invoke<AccessCheck[]>('check_permissions'); }
+  catch (error) { state.permissionError = String(error); }
+  finally { state.busy = ''; render(); }
 }
 function progress() {
   if (state.busy !== 'scan' && !state.summary) return '';
@@ -112,8 +128,12 @@ function overview() {
 
 function visibleItems() {
   const query = state.query.toLowerCase();
-  return state.items.filter(item => item.category === state.page && (!query || `${item.name} ${item.path}`.toLowerCase().includes(query)))
+  const matches = (item: Item) => !query || `${item.name} ${item.path}`.toLowerCase().includes(query);
+  const items = state.items.filter(item => item.category === state.page || state.page === 'apps' && item.appParent)
     .sort((a, b) => state.sort === 'name' ? a.name.localeCompare(b.name) : state.sort === 'modified' ? a.modified - b.modified : b.bytes - a.bytes);
+  if (state.page !== 'apps') return items.filter(matches);
+  return items.filter(item => !item.appParent && (matches(item) || items.some(child => child.appParent === item.id && matches(child))))
+    .flatMap(item => [item, ...(state.selected.has(item.id) ? items.filter(child => child.appParent === item.id) : [])]);
 }
 
 function detailPanel() {
@@ -124,11 +144,11 @@ function detailPanel() {
 
 function categoryPage(key: Category) {
   const category = categories[key]; const items = visibleItems();
-  const selectable = items.filter(i => canSelect(i) && !i.appParent);
+  const selectable = items.filter(i => canSelect(i) && (key !== 'apps' || !i.appParent));
   const allSelected = selectable.length > 0 && selectable.every(i => state.selected.has(i.id));
   return `${toolbar(key === 'apps' ? 'Application manager' : 'Review storage')}<div class="content category-content"><div class="page-heading">${tile(key)}<div><h1>${category.name}</h1><p>${category.description}</p></div><strong>${bytes(total(key))}</strong></div>
     ${key === 'node' ? `<div class="folder-notice">${icon('folder')}<span>${state.settings.roots.length ? `${state.settings.roots.length} project folder${state.settings.roots.length === 1 ? '' : 's'} included in scans` : 'node_modules is not scanned until you choose a project folder.'}</span><button class="button secondary" data-action="add-root" ${disable()}>${icon('plus')} Add folder & scan</button></div>` : ''}
-    ${key === 'apps' ? '<p class="inline-note">Select the app bundle first, then any associated files you want to remove. Apps with extensions or helpers may need their own uninstaller.</p>' : ''}
+    ${key === 'apps' ? '<p class="inline-note">Selecting an app also selects its detected support files, caches, settings, and other associated data. Review the paths below it and uncheck anything you want to keep, including local documents or sign-in data. Apps with extensions or privileged helpers may need their own uninstaller.</p>' : ''}
     <div class="list-controls"><label class="search-field">${icon('search')}<input id="search" type="search" placeholder="Search names or paths" value="${e(state.query)}" aria-label="Search names or paths"></label><label class="sort-control">Sort by <select id="sort" aria-label="Sort items"><option value="size" ${state.sort === 'size' ? 'selected' : ''}>Largest first</option><option value="name" ${state.sort === 'name' ? 'selected' : ''}>Name</option><option value="modified" ${state.sort === 'modified' ? 'selected' : ''}>Oldest modified</option></select></label></div>
     <div class="results-layout ${state.detail ? 'with-details' : ''}"><div class="results-list"><div class="list-header"><label><input type="checkbox" data-action="select-visible" ${allSelected ? 'checked' : ''} ${!selectable.length ? 'disabled' : ''} aria-label="Select ${selectable.length} visible items"><span>${items.length} items</span></label><span>On disk</span><span>Modified</span></div>
     ${items.length ? items.map(item => `<div class="item-row ${state.detail === item.id ? 'focused' : ''} ${item.appParent ? 'related' : ''}"><input type="checkbox" data-select="${e(item.id)}" aria-label="Select ${e(item.name)}" ${state.selected.has(item.id) ? 'checked' : ''} ${!canSelect(item) ? 'disabled' : ''}><button class="item-name" data-action="detail" data-id="${e(item.id)}"><span>${e(item.name)}${item.appParent ? '<small class="related-label">Associated data</small>' : ''}</span><small title="${e(item.path)}">${e(item.path)}</small>${item.issue ? `<small class="item-warning">${e(item.issue)}</small>` : ''}</button><strong>${item.complete ? bytes(item.bytes) : state.busy === 'scan' && !item.issue ? 'Calculating…' : 'Incomplete'}</strong><span class="modified">${date(item.modified)}</span></div>`).join('') : `<div class="empty-state">${icon(key === 'apps' ? 'app' : 'folder')}<h2>${state.query ? 'No matching items' : key === 'node' && !state.settings.roots.length ? 'Choose a project folder' : state.busy === 'scan' ? 'Looking for items…' : state.summary ? 'Nothing found here' : 'Let’s see what’s here'}</h2><p>${state.query ? 'Try another name or part of a path.' : key === 'node' && !state.settings.roots.length ? 'Add a project folder, then scan to find its dependencies.' : 'Run a scan to see the items you can review.'}</p>${!state.query && !state.busy ? scanButton() : ''}</div>`}
@@ -147,9 +167,10 @@ function settingsPage() {
     <section class="settings-section" aria-labelledby="updates-title"><h2 id="updates-title">Application updates</h2><p>Installed version: ${e(__APP_VERSION__)}. Checks GitHub for new releases; your files and cleanup history stay on this Mac.</p><div class="permission-row"><div><p aria-live="polite">${e(desktop ? state.updateStatus || 'Check for a newer stable release.' : 'Update checks are available in the desktop app.')}</p></div><button class="button secondary" data-action="check-update" ${!desktop || state.checkingUpdate ? 'disabled' : ''}>${state.checkingUpdate ? 'Checking…' : 'Check for updates'}</button></div></section>
     <section class="settings-section"><div class="section-title"><div><h2>Project folders</h2><p>Look for node_modules only where you choose.</p></div><button class="button secondary" data-action="add-root" ${disable()}>${icon('plus')} Add folder</button></div><div class="root-list">${state.settings.roots.length ? state.settings.roots.map((root, index) => `<div>${icon('folder')}<span class="file-path">${e(root)}</span><button class="icon-button" data-action="remove-root" data-index="${index}" aria-label="Remove ${e(root)} from scan folders" ${disable()}>${icon('close')}</button></div>`).join('') : '<p>No project folders added yet. Your home folder is never searched recursively by default.</p>'}</div></section>
     <section class="settings-section permissions-section" aria-labelledby="permissions-title"><h2 id="permissions-title">Permissions</h2><p>Allow Mac Cleaner to read the folders you want to scan. macOS manages these permissions in System Settings.</p>
-      <div class="permission-row"><div><h3>Files & Folders</h3><p>Open Privacy & Security → Files & Folders and allow Mac Cleaner to access Documents, Desktop, or Downloads as needed. If it is not listed, add your project folder above first.</p></div><button class="button secondary" data-action="privacy-settings" ${disable()}>Open Privacy & Security</button></div>
-      <div class="permission-row"><div><h3>Full Disk Access <span class="permission-optional">Optional</span></h3><p>For protected cache or Trash locations, open Full Disk Access, use + to add Mac Cleaner if needed, and enable it. Quit and reopen Mac Cleaner, then scan again.</p></div><button class="button secondary" data-action="full-disk-access" ${disable()}>Open Full Disk Access</button></div>
-      <p class="permission-note">Only you can grant access. Opening settings does not enable a permission. Project folders still need to be added above.</p>
+      <div class="permission-row"><div><h3>Files & Folders</h3><p>Request access to Desktop, Documents, and Downloads through macOS, and check your project folders, app caches, and Trash. Approve any macOS prompts. If access was denied before, enable it in Privacy & Security → Files & Folders.</p></div><div class="permission-actions"><button class="button secondary" data-action="check-permissions" ${disable()}>${state.busy === 'permissions' ? 'Checking access…' : 'Request & check access'}</button><button class="button secondary" data-action="privacy-settings" ${disable()}>Open Privacy & Security</button></div></div>
+      <div class="permission-checks" role="status" aria-live="polite" aria-busy="${state.busy === 'permissions'}">${state.busy === 'permissions' ? '<p>Checking folder access. Respond to any macOS permission prompts to continue.</p>' : state.permissionError ? `<p>Failed: could not check access. ${e(state.permissionError)} Try again.</p>` : state.permissions ? state.permissions.map(check => `<div class="permission-row"><div><h3>${e(check.name)}</h3><p class="file-path">${e(check.path)}</p><p>${e(check.message)}</p></div><strong class="permission-status" data-status="${check.status}">${check.status === 'success' ? 'Success' : check.status === 'failed' ? 'Failed' : 'Not available'}</strong></div>`).join('') : '<p>Not checked yet. Request & check access to see Success or Failed for each folder.</p>'}</div>
+      <div class="permission-row"><div><h3>Full Disk Access <span class="permission-optional">Optional</span></h3><p>Open Full Disk Access and use + to add Mac Cleaner, or drag the installed app from Finder into the list, then enable it. Finder selects the app for you when it is running from an app bundle. Quit and reopen Mac Cleaner if macOS requests it.</p></div><button class="button secondary" data-action="full-disk-access" ${disable()}>Open Full Disk Access</button></div>
+      <p class="permission-note">Only you can grant access. We recheck when you return from System Settings. Success means that folder could be listed at the last check; nested files and write access can still differ. These checks do not verify the Full Disk Access switch. Project folders still need to be added above.</p>
     </section>
     <section class="settings-section appearance-section"><div><h2>Appearance</h2><p>Follow your Mac, or choose a look.</p></div><div class="segmented" role="group" aria-label="Appearance">${(['system', 'light', 'dark'] as const).map(theme => `<button data-theme="${theme}" aria-pressed="${state.settings.appearance === theme}">${theme[0].toUpperCase() + theme.slice(1)}</button>`).join('')}</div></section>
     <section class="settings-section"><h2>Built around your choices</h2><div class="settings-fact">${icon('shield')}<div><strong>Local processing</strong><p>Scans and cleanup history stay on your Mac. No account, uploads, or telemetry.</p></div></div><div class="settings-fact">${icon('trash')}<div><strong>Trash comes first</strong><p>Mac Cleaner never empties Trash. Open it in Finder when you’re ready to permanently remove its contents.</p></div></div><div class="settings-fact">${icon('info')}<div><strong>Access is specific</strong><p>Inaccessible folders appear in scan notices. Protected apps and other volumes are excluded from cleanup.</p></div></div></section></div>`;
@@ -232,6 +253,7 @@ async function addRoot() {
   state.busy = 'folder'; render();
   try {
     state.settings = await invoke<Settings>('choose_root');
+    state.permissions = null;
     const changed = JSON.stringify(state.settings.roots) !== previous;
     if (changed) notify('Project folders updated.');
     return changed;
@@ -244,13 +266,13 @@ app.addEventListener('change', event => {
   if (target.id === 'sort') { state.sort = target.value; render(); return; }
   if (target.dataset.select) {
     const item = state.items.find(i => i.id === target.dataset.select)!;
-    if (target.checked && item.appParent && !state.selected.has(item.appParent)) { target.checked = false; notify('Select the app bundle first, then select its associated data.'); return; }
-    if (target.checked) state.selected.add(item.id); else { state.selected.delete(item.id); state.items.filter(i => i.appParent === item.id).forEach(i => state.selected.delete(i.id)); }
+    if (target.checked && item.category === 'apps' && item.appParent && !state.selected.has(item.appParent)) { target.checked = false; notify('Select the app bundle first, then select its associated data.'); return; }
+    selectItem(item, target.checked);
     render();
   }
   if (target.dataset.action === 'select-visible') {
-    visibleItems().filter(i => canSelect(i) && !i.appParent).forEach(item => target.checked ? state.selected.add(item.id) : state.selected.delete(item.id));
-    state.items.filter(i => i.appParent && !state.selected.has(i.appParent)).forEach(i => state.selected.delete(i.id)); render();
+    visibleItems().filter(i => canSelect(i) && (state.page !== 'apps' || !i.appParent)).forEach(item => selectItem(item, target.checked));
+    render();
   }
 });
 
@@ -271,7 +293,7 @@ app.addEventListener('click', async event => {
       case 'scan': await startScan(); break;
       case 'cancel': await invoke('cancel_scan'); state.phase = 'Stopping scan…'; render(); break;
       case 'add-root': { const scanAfter = state.page === 'node'; if (await addRoot() && scanAfter) await startScan(); break; }
-      case 'remove-root': state.settings = await invoke<Settings>('remove_root', { index: Number(target.dataset.index) }); state.items = []; state.selected.clear(); state.summary = null; render(); break;
+      case 'remove-root': state.settings = await invoke<Settings>('remove_root', { index: Number(target.dataset.index) }); state.permissions = null; state.items = []; state.selected.clear(); state.summary = null; render(); break;
       case 'detail': {
         state.detail = target.dataset.id!; render();
         app.querySelector('.details-pane')?.scrollIntoView({ block: 'nearest' });
@@ -288,9 +310,14 @@ app.addEventListener('click', async event => {
       case 'open-trash': if (desktop) await invoke('open_trash'); else notify('Trash is available in the desktop app.'); break;
       case 'privacy-settings':
       case 'full-disk-access':
-        if (desktop) await invoke('open_privacy_settings', { fullDiskAccess: target.dataset.action === 'full-disk-access' });
+        if (desktop) {
+          await invoke('open_privacy_settings', { fullDiskAccess: target.dataset.action === 'full-disk-access' });
+          state.recheckPermissions = true; state.permissions = null; state.permissionError = ''; render();
+          notify('Approve access in System Settings, then return here to check the result.');
+        }
         else notify('macOS permissions are available in the desktop app.');
         break;
+      case 'check-permissions': await refreshPermissions(); break;
       case 'review': showReview(); break;
       case 'clear': state.selected.clear(); render(); break;
       case 'dismiss-error': state.error = ''; render(); break;
@@ -305,6 +332,9 @@ app.addEventListener('click', async event => {
 app.addEventListener('mousedown', event => { if (desktop && (event.target as HTMLElement).hasAttribute('data-drag')) void getCurrentWindow().startDragging(); });
 dialog.addEventListener('change', () => { const button = dialog.querySelector<HTMLButtonElement>('[data-dialog="confirm"]'); if (button) button.disabled = !dialog.querySelector<HTMLInputElement>('#acknowledge')?.checked; });
 dialog.addEventListener('click', event => { const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.dialog; if (action === 'close') dialog.close(); if (action === 'confirm') void confirmTrash(); });
+window.addEventListener('focus', () => {
+  if (state.recheckPermissions && !state.busy) { state.recheckPermissions = false; void refreshPermissions(); }
+});
 
 async function init() {
   render();

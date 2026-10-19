@@ -13,7 +13,7 @@ Mac Cleaner moves selected candidates to Trash and records their outcomes. Resto
 | Eligibility and scope | Complete/selectable candidate strictly under its stored scan root | Displayed totals can include items that cannot be removed |
 | Ancestry and identity checks | Absolute paths without `..`, no symlink ancestry at validation, full top-level identity before move | Checks and the later native operation are not one atomic path-resolution transaction |
 | Same-device checks | Cleanup requires the home's device; measurement rejects crossing devices | External-volume cleanup/restore is unsupported |
-| Associated-file restrictions | Exact bundle-ID-derived paths; app required in selection; failed app keeps associated data | An exact name match does not establish all contents are disposable or exclusively owned |
+| Associated-file restrictions | Exact bundle IDs or unique app-name matches in fixed Library locations; app required except for independent user caches; failed app keeps associated data | Name matching does not establish all contents are disposable or exclusively owned; app selection includes eligible associated data by default |
 | Running-app checks | Blocks operations for a known bundle reported running by macOS | Command-line tools, helpers, build servers, and new processes can escape this check |
 | Native Trash | Uses macOS Trash and verifies the returned identity | A native error or unverified result requires inspecting history/Trash; no permanent-delete fallback |
 | Durable history intent | Saves before a move/restore, saves outcome afterward, reconciles interrupted state | The file move and history write are separate operations; whole batches are not atomic |
@@ -34,7 +34,7 @@ The scan has no ten-second deadline. It discovers all supported categories, incl
 
 The app runs with the current user's access. It has no administrator helper or automatic privilege escalation. Some protected locations can be inaccessible; errors or inspection-only/incomplete rows explain many exclusions. Certain rejected app candidates are skipped without a notice, so the scan is not an exhaustive inventory.
 
-Settings includes buttons to open Privacy & Security and optional Full Disk Access. The native bridge opens fixed system URLs only. It does not grant permissions, query private permission databases, or report a guessed authorization status. Grant access yourself in macOS, reopen the app, and rescan. Choosing project roots remains necessary regardless of permission settings.
+Settings includes a request/check action and shortcuts to Files & Folders and optional Full Disk Access. The check lists only fixed user folders and saved project roots, without reading file contents or changing files; macOS may prompt for folder consent. Results describe actual top-level directory access, not global authorization or write access. Missing folders are distinct from failed access. The native bridge opens fixed system URLs and reveals the running app bundle for manual Full Disk Access setup. It never enables permissions or queries private permission databases. Checks refresh when the app regains focus after opening System Settings. Grant access yourself in macOS, reopen the app if requested, and rescan. Choosing project roots remains necessary regardless of permission settings.
 
 Settings and history live in `~/Library/Application Support/com.maccleaner.desktop/`. History includes original paths, Trash paths, names, sizes, timestamps, and file identities. It is local plaintext JSON with filesystem permissions, not encrypted storage. There is no account, upload, telemetry, history export, history-clear UI, or automatic history pruning. Scan results are held only in memory.
 
@@ -44,9 +44,9 @@ The production app contains no remote-service integration. Development mode sepa
 
 ## Uninstall scope
 
-Only ordinary app bundles from the supported application roots and separately selected exact associated paths are candidates. Apple app bundles are inspection-only, and Mac Cleaner excludes its own bundle. Application support can include meaningful local user data, so it requires separate review.
+Ordinary app bundles from the supported application roots and recognized associated paths in the user and system Libraries are candidates. Selecting an app includes eligible detected associated data by default. Review each path and uncheck local documents or other data to retain before confirming Trash. Apple app bundles are inspection-only, and Mac Cleaner excludes its own bundle.
 
-The app does not discover/remove all vendor components, shared support directories, containers, extensions, helpers, services, or drivers. It does not prove that an app is safe to uninstall by moving its bundle. Use the app vendor's procedure when required.
+The app does not discover/remove all vendor components, shared support directories, group containers, extensions, privileged helper binaries, service registrations, custom data paths, or drivers. App containers are recognized only by exact bundle ID. Launch configuration files are not an instruction to unload a service. It does not prove that an app is safe to uninstall by moving its bundle. Use the app vendor's procedure when required.
 
 ## Troubleshooting
 

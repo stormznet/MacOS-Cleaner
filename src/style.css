@@ -173,6 +173,10 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
 .permission-row { display: flex; align-items: flex-start; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
 .permission-row > div { flex: 1; min-width: 0; }
 .permission-row h3 { font-size: 13px; }
+.permission-row > .permission-actions { flex: 0 0 auto; display: grid; gap: 8px; }
+.permission-status { font-size: 12px; white-space: nowrap; color: var(--faint); }
+.permission-status[data-status=success] { color: var(--green); }
+.permission-status[data-status=failed] { color: var(--amber); }
 .permission-optional { color: var(--faint); font-size: 11px; font-weight: 400; margin-left: 6px; }
 .settings-section .permission-note { font-size: 11px; margin-top: 14px; }
 .root-list { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }

@@ -21,7 +21,10 @@ JavaScript invokes snake_case command names with camelCase argument keys. Rust s
 | `reveal_item` | `{ id: string }` | Void | Resolves a scan ID first, then history ID; reveals the original location for restored history, otherwise its recorded Trash location |
 | `open_update` | None | Void | Opens the fixed latest-release DMG URL in the default browser; accepts no caller URL; reports native launch failure |
 | `open_trash` | None | Void | Opens `~/.Trash` in Finder; reports failure if the native request is rejected |
-| `open_privacy_settings` | `{ fullDiskAccess: boolean }` | Void | Opens the fixed Full Disk Access URL when true, otherwise Privacy & Security; never enables permissions or accepts a caller-provided URL |
+| `open_privacy_settings` | `{ fullDiskAccess: boolean }` | Void | Opens the fixed Full Disk Access URL when true and reveals the running `.app` bundle in Finder, otherwise opens Files & Folders; never enables permissions or accepts a caller-provided URL |
+| `check_permissions` | None | `AccessCheck[]` | Blocking worker and exclusive operation; checks Desktop, Documents, Downloads, app caches, Trash, and saved project roots; may trigger macOS consent prompts; accepts no caller paths |
+
+`AccessCheck` contains `name`, `path`, `status` (`success`, `failed`, or `unavailable`), and `message`. Success means a directory listing could be opened and its first entry, if any, read. Missing paths are unavailable; other filesystem errors are failed. Results do not certify Full Disk Access or write permission. No contents are returned. A command failure rejects the promise rather than returning fabricated per-folder results.
 
 The command ACL grants `allow-<command-name-with-hyphens>` for each row. It also allows `core:window:allow-start-dragging`. Adding a command requires updating its Rust handler/registration, the build manifest, and the capability allowlist; generated permission files alone do not authorize a window.
 
@@ -79,7 +82,7 @@ Rust `Item` is serialized to the frontend but is not persisted. The frontend's T
 | `selectable` | boolean | Candidate is eligible under scan/category rules; the UI also requires `complete` and no active operation |
 | `issue` | string or null | Reason an item is excluded or incomplete |
 | `bundleId` | string or null | Owning application's identifier, used for running-app checks |
-| `appParent` | string or null | Parent app's scan ID for associated data |
+| `appParent` | string or null | Parent app's scan ID for associated data; user caches keep this relationship while remaining independently cleanable |
 | `version` | string or null | App short version, if available |
 | `identity` | `Identity` | Rust-captured metadata for later validation |
 

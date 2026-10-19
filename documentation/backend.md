@@ -6,7 +6,7 @@ The backend owns filesystem authority. UI commands supply scan IDs or history ID
 
 ## Startup and command dispatch: main.rs
 
-`main()` creates the Tauri builder, initializes `AppState` with Tauri's home/application-data paths, registers eleven commands, and runs the application. Setup errors stop startup; the current implementation has no dedicated recovery window for an unreadable history file.
+`main()` builds the Tauri application with its command handlers, initializes `AppState` with Tauri's home/application-data paths, and then runs the event loop. State initialization errors return from `main()` before the event loop starts, so an already-running instance or unreadable history fails startup without panicking in Tauri's setup hook. There is no dedicated recovery window for an unreadable history file.
 
 The command handlers are thin adapters around scanning, cleanup, persistence, and native integration. Scan, Trash, and restore run through `tauri::async_runtime::spawn_blocking`. The full parameter/result contract and individual handler behavior are in [the IPC reference](api.md#commands).
 
@@ -47,7 +47,8 @@ Project roots are canonicalized before ancestry checks: a selected alias/symlink
 | `children()` | Lists immediate children; missing directories are normal, other listing errors become warnings |
 | `hidden_or_bundle()` | Recognizes leading-dot names and `.app`, `.photoslibrary`, `.bundle` suffixes for discovery exclusions |
 | `valid_bundle_id()` | Requires at least one dot and nonempty ASCII alphanumeric/hyphen segments before constructing associated-data paths |
-| `CacheApp`, `cache_owner()` | Index app names by bundle ID; match exact IDs, ShipIt IDs, or unique ASCII-case-insensitive name aliases without arbitrary prefix matching |
+| `CacheApp`, `cache_owner()` | Index app scan IDs and names by bundle ID; match exact IDs, ShipIt IDs, or unique ASCII-case-insensitive name aliases without arbitrary prefix matching |
+| `discover_app_data()` | Inspect fixed user/system Library locations, link exact bundle-ID or unique-name matches to their app, and report rejected candidate paths |
 | `discover_nodes()` | Iterative directory traversal under one root, stopping at dependency candidates and excluded subtrees |
 | `measure()` | Metadata-only recursive allocated-block measurement, with cancellation and device/placeholder checks |
 | `measure_items()` | Runs four candidate-measurement workers, updates the registry, emits item/progress events, and returns measurement warnings |
@@ -61,7 +62,7 @@ Discovery runs in this order:
 
 1. Immediate children of Xcode DerivedData.
 2. Four fixed package-cache locations.
-3. App bundles in the two supported application roots, plus exact associated-data paths for eligible non-Apple bundle IDs.
+3. App bundles in the two supported application roots, then associated data in fixed user/system Library locations for eligible non-Apple apps. Resolving names after the full inventory prevents assigning aliases shared by multiple apps.
 4. Immediate children of the user cache directory, matched against installed apps, registered macOS applications, or the special Xcode identifier.
 5. Validated user project roots, searched for dependency directories.
 
@@ -91,7 +92,7 @@ Cancellation is cooperative. Checks exist in application/project traversal and m
 
 `validate()` checks that an item is complete/selectable, strictly below its stored root, has clean ancestry, still matches its scanned identity, and is on the home directory's device. If it has a bundle ID, its owning app must not be reported as running.
 
-`trash_selected()` accepts 1–10,000 submitted IDs. It deduplicates IDs, looks them up in the current registry, and validates the entire selection before moving any item. It rejects overlapping parent/child paths and associated items whose app is missing from the same selection.
+`trash_selected()` accepts 1–10,000 submitted IDs. It deduplicates IDs, looks them up in the current registry, and validates the entire selection before moving any item. It rejects overlapping parent/child paths and associated uninstall items whose app is missing from the same selection. User-cache candidates can carry `app_parent` while remaining independently cleanable: when their app is selected, the same relationship keeps the cache if moving the app fails. Each cache has one candidate shared by the cache and uninstall screens.
 
 The function sorts parentless items before associated items, assigns one operation ID, and processes candidates individually:
 

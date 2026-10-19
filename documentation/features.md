@@ -67,31 +67,34 @@ For bundle-ID folders missing from the app inventory, macOS's registered-applica
 
 Recognized cache details include the app name and bundle identifier. ShipIt caches retain the parent app's running-app check and instruct you to wait for updates to finish. Mac Cleaner's own cache is excluded. Unconfirmed owners remain **inspection-only**: their sizes and paths are visible, but their checkboxes are disabled. The explanation distinguishes an unconfirmed owner from a permissions failure; a cache may belong to a removed app, a shared tool, or a macOS service.
 
-Cache ownership is a filename match, not a guarantee about the contents. Review the description and path. App caches are independent candidates, so selecting an application does not automatically select its cache.
+Cache ownership is a filename match, not a guarantee about the contents. Review the description and path. User app caches remain independently selectable in **App caches**, and recognized caches also appear beneath their app in the uninstaller. Selecting an app includes its eligible cache in the selection without creating a duplicate candidate.
 
 ## Application uninstall
 
-Open **Uninstall an app** after scanning. Select the app bundle first, then separately select any associated files you intend to remove. Selecting an app never automatically selects its associated data.
+Open **Uninstall an app** after scanning. Checking an app selects its eligible detected associated files and folders and reveals them directly beneath it, with their paths and sizes. Review these paths and uncheck anything to keep, including local documents, settings, or sign-in data. Incomplete and inspection-only items are never automatically selected. Unchecking the app hides its associated rows and clears their selections.
 
-For a non-Apple app with a valid bundle identifier, the scanner checks these exact paths:
+For a non-Apple app with a valid bundle identifier, the scanner checks the following locations in both `~/Library` and `/Library`, using the current user's access:
 
 | Associated item | Path | Review consideration |
 | --- | --- | --- |
-| Preferences | `~/Library/Preferences/<bundle-id>.plist` | Removing this resets saved settings |
-| Application support | `~/Library/Application Support/<bundle-id>` | May contain local user data |
-| Saved application state | `~/Library/Saved Application State/<bundle-id>.savedState` | May contain saved window/session state |
+| Preferences | `Preferences/<bundle-id>.plist`; `Preferences/ByHost/<bundle-id>.<host-UUID>.plist` | Removing this resets saved settings |
+| Application support, logs, caches | `Application Support`, `Logs`, `Caches`: exact bundle ID or unique app display name, bundle name, or app filename; bundle-ID `.ShipIt` entries also match | May contain local user data; shared or ambiguous names are skipped |
+| Saved application state | `Saved Application State/<bundle-id>.savedState` | May contain saved window/session state |
+| App container and scripts | `Containers/<bundle-id>`; `Application Scripts/<bundle-id>` | Can contain local documents and app data |
+| Web data | `WebKit/<bundle-id>`; `HTTPStorages/<bundle-id>` and `<bundle-id>.binarycookies` | May contain cookies and sign-in data |
+| Launch configuration | `LaunchAgents/<bundle-id>.plist`; `LaunchDaemons/<bundle-id>.plist` | Does not unload running services or remove their helper binaries |
 
-Associated items require their parent app in the same selection. Deselecting the app clears its associated selections. If moving the app fails or cannot be verified, its selected associated data is kept. The backend enforces these rules independently of the UI.
+Associated items require their parent app in the same selection, except user caches which can still be cleaned independently. Deselecting the app clears its associated selections. If moving a selected app fails or cannot be verified, its selected associated data, including caches, is kept. The backend enforces these rules independently of the UI. Symlink candidates are rejected; access failures become scan notices or incomplete items.
 
 Apple applications whose identifiers start with `com.apple.` are inspection-only. Mac Cleaner excludes its own bundle. Apps without a usable bundle identifier are skipped. `/System/Applications` is not scanned for uninstall candidates; macOS can still identify a system app as a user-cache owner.
 
-This is removal of ordinary app bundles and narrowly matched optional files. It does not remove shared vendor folders, app containers, group containers, privileged helpers, login services, drivers, or extensions. Use a vendor's removal workflow when the app requires one. There is no automatic detection proving that an app has no such components.
+This removes ordinary app bundles and their detected associated files. It does not discover arbitrary custom paths or remove shared vendor folders, group containers, privileged helper binaries, login-service registrations, drivers, or extensions. Use a vendor's removal workflow when the app requires one. There is no automatic detection proving that an app has no such components.
 
 ## Search, sorting, and selection
 
-- Search matches names and full paths without case sensitivity.
-- Sort by **Largest first**, **Name**, or **Oldest modified**. Modified time is filesystem metadata, not the date an app or project was last used.
-- The header checkbox selects or clears eligible, visible, parentless items. It does not automatically select app-associated data.
+- Search matches names and full paths without case sensitivity. In the uninstaller, matching associated data also finds its parent app; check the app to reveal all of its detected associated items.
+- Sort by **Largest first**, **Name**, or **Oldest modified**. In the uninstaller, associated items stay directly beneath their selected app. Modified time is filesystem metadata, not the date an app or project was last used.
+- The header checkbox selects or clears eligible visible items. In the uninstaller it selects app bundles together with their eligible detected associated data, even when a child does not match the search filter.
 - Selections survive filtering and navigation between categories. Review includes selected items hidden by the current filter or page.
 - **Clear** removes the entire selection. Starting another scan or removing a project root also clears it.
 - Clicking an item name opens details; the checkbox controls selection.
@@ -126,12 +129,14 @@ Adding a folder in Settings requires another scan to include it. **Add folder & 
 
 ## macOS permissions
 
-**Settings → Permissions** provides two native actions:
+**Settings → Permissions** provides access checks and two System Settings shortcuts:
 
-- **Open Privacy & Security**: open System Settings, choose **Files & Folders**, and allow needed Documents, Desktop, or Downloads access for Mac Cleaner. If the app is not listed, add the project folder through the native picker first.
-- **Open Full Disk Access**: optionally add and enable Mac Cleaner for protected cache or Trash locations. Quit and reopen the app afterward, then scan again.
+- **Request & check access** attempts to list Desktop, Documents, Downloads, app caches, Trash, and configured project folders. macOS may show consent prompts and register the app under Files & Folders. Approve prompts to continue. Each result shows **Success**, **Failed** with the filesystem error, or **Not available** for a missing folder. Errors from the check itself show **Failed** and allow retry. Checks do not modify files or add project roots.
 
-macOS requires the user to grant access; opening a panel does not enable it. This section does not claim to detect the current Full Disk Access state. Permissions do not add project roots or remove the scanner's scope restrictions. Scan notices include a **Review folders and permissions** shortcut to Settings. [Apple's folder-access guide](https://support.apple.com/en-ie/guide/mac-help/mchld5a35146/27/mac/27) describes the system controls.
+- **Open Privacy & Security**: open the Files & Folders panel and allow needed Documents, Desktop, or Downloads access for Mac Cleaner. Previously denied requests must be enabled here.
+- **Open Full Disk Access**: optionally add and enable Mac Cleaner for protected cache or Trash locations. When running from an app bundle, Finder selects that bundle for dragging into the settings list; alternatively use **+**. macOS still requires you to add/enable the app. Quit and reopen it if macOS requests it, then check access and scan again.
+
+Access is rechecked when you return to the app after successfully opening System Settings. Checks run only on request or that return, not on startup. Success means the top-level folder could be listed at the last check; it does not prove every nested file is readable, that writes are allowed, or that the global Full Disk Access switch is on. macOS provides no supported API to silently enable that switch. Opening a panel never counts as permission success. Permissions do not add project roots or remove the scanner's scope restrictions. Scan notices include a **Review folders and permissions** shortcut to Settings. [Apple's folder-access guide](https://support.apple.com/en-ie/guide/mac-help/mchld5a35146/27/mac/27) describes the system controls.
 
 ## Keyboard, layout, and browser preview
 
