@@ -1,6 +1,6 @@
 [package]
 name = "mac-cleaner"
-version = "0.1.0"
+version = "0.1.1"
 description = "Review developer storage and move chosen items to Trash"
 edition = "2021"
 

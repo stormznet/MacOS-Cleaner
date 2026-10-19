@@ -43,7 +43,7 @@ Open `http://127.0.0.1:1420`. Preview data starts empty and native operations ar
 
 [tauri.conf.json](../src-tauri/tauri.conf.json) defines:
 
-- Product `Mac Cleaner`, identifier `com.maccleaner.desktop`, version `0.1.0`.
+- Product `Mac Cleaner`, identifier `com.maccleaner.desktop`, version `0.1.1`.
 - Main window 1180 × 800, minimum 900 × 620, overlay title bar, hidden title text.
 - Vite development URL and `../dist` production frontend.
 - Main-window capability and content-security policy.
@@ -137,7 +137,7 @@ For an ad-hoc signed local build without Finder layout automation:
 
 ```sh
 APPLE_SIGNING_IDENTITY='-' npm run bundle -- --ci
-dmg='src-tauri/target/release/bundle/dmg/Mac Cleaner_0.1.0_aarch64.dmg'
+dmg='src-tauri/target/release/bundle/dmg/Mac Cleaner_0.1.1_aarch64.dmg'
 hdiutil verify "$dmg"
 dmg_mount=$(mktemp -d)
 hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$dmg_mount"
@@ -145,7 +145,7 @@ codesign --verify --deep --strict --verbose=2 "$dmg_mount/Mac Cleaner.app"
 hdiutil detach "$dmg_mount"
 ```
 
-The filename above assumes Apple Silicon and version 0.1.0. Developer ID signing, notarization, and Gatekeeper distribution validation have not been completed.
+The filename above assumes Apple Silicon and version 0.1.1. Developer ID signing, notarization, and Gatekeeper distribution validation have not been completed.
 
 The [GitHub workflow](../.github/workflows/build.yml) builds for `aarch64-apple-darwin`, verifies the disk image and the signature of the app mounted from it, and copies the DMG to `release/MacCleaner-arm64.dmg`. Branch pushes, pull requests, and manual runs upload it as a workflow artifact; pushing a matching `v*` tag also publishes it as a GitHub Release. GitHub wraps workflow artifact downloads in its own archive; the release asset itself is a DMG. The workflow does not run the test suites listed above.
 

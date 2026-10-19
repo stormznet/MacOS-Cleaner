@@ -27,16 +27,18 @@ The installer is written to `src-tauri/target/release/bundle/dmg/` as a `.dmg` c
 
 [Build and release](.github/workflows/build.yml) runs on branch pushes, pull requests, and manual dispatches. It builds the Apple Silicon app on macOS, verifies its ad-hoc signature, and uploads `MacCleaner-macos-arm64` under the workflow run's artifacts. The artifact contains `MacCleaner-arm64.dmg`.
 
-Pushing a `v*` tag also publishes a GitHub Release with the DMG and generated release notes. The tag must match `src-tauri/tauri.conf.json` (currently `v0.1.0`); a mismatched tag fails before building. Tags containing a hyphen, such as `v0.2.0-beta.1`, are marked as prereleases. Before bumping a release, keep the versions in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and the lockfiles in sync. The UI version is read from the Tauri configuration at build time.
+Pushing a `v*` tag also publishes a GitHub Release with the DMG and generated release notes. The tag must match `src-tauri/tauri.conf.json` (currently `v0.1.1`); a mismatched tag fails before building. Tags containing a hyphen, such as `v0.2.0-beta.1`, are marked as prereleases. Before bumping a release, keep the versions in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and the lockfiles in sync. The UI version is read from the Tauri configuration at build time.
 
 After committing the release version and pushing that commit to GitHub:
 
 ```sh
-git tag -a v0.1.0 -m "Mac Cleaner v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Mac Cleaner v0.1.1"
+git push origin v0.1.1
 ```
 
 The release job uses the built-in `GITHUB_TOKEN`; no extra repository secrets are needed. These builds are ad-hoc signed and are not notarized. macOS may require approval in Privacy & Security before opening them.
+
+If a tag fails the version check, commit and push the matching version first. Rerunning the failed job uses the original tagged commit, so a failed, unpublished tag must be recreated at the corrected commit before pushing it again. Leave published release tags unchanged; use a new version for those.
 
 ## Application updates
 

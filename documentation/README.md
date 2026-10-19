@@ -1,6 +1,6 @@
 # Mac Cleaner documentation
 
-Documentation for the implemented **0.1.0** application: a Rust/Tauri macOS cleaner with a TypeScript interface. Checked against the source on 19 October 2026.
+Documentation for the implemented **0.1.1** application: a Rust/Tauri macOS cleaner with a TypeScript interface. Checked against the source on 19 October 2026.
 
 Start with the user guide to scan and review files, or the architecture guide to work on the code.
 
