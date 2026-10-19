@@ -4,6 +4,8 @@
 
 The frontend uses TypeScript and the DOM directly. There is no React component tree, router, state-management package, or production demo-data source. [main.ts](../src/main.ts) renders the interface from one in-memory state object and delegates events from the application root.
 
+`updates.ts` checks GitHub release metadata with a ten-second timeout. Startup checks run only on desktop and do not delay initialization. A toolbar button appears for a newer stable release with the expected DMG; Settings provides manual retry and status. `open_update` opens the fixed download URL in the default browser. The displayed version comes from the Tauri configuration through Vite.
+
 ## Entry points and state
 
 [index.html](../index.html) provides three persistent elements:

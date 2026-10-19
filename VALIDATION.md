@@ -121,3 +121,31 @@ Restore already uses the recorded original path instead of the basename assigned
 - Apple Silicon application bundle rebuilt successfully (6.13 MiB). The local ad-hoc signature passed strict verification, and the refreshed `release/MacCleaner-0.1.0-arm64.zip` passed archive integrity verification.
 
 Native window interaction and the real-home timing scan were not rerun. File moves were limited to the integration test's own temporary fixture; no user project folders were cleaned.
+
+
+## DMG releases and update notification, 19 October 2026
+
+- DMG-only release build passed with ad-hoc signing outside the sandbox. `hdiutil verify` passed; the mounted app passed `codesign --verify --deep --strict`, and its Applications shortcut points to `/Applications`. The image was detached afterward. Distribution copy: `release/MacCleaner-arm64.dmg` (2.11 MiB).
+- Workflow YAML and every shell run block passed syntax checks. CI verifies the app inside the mounted DMG because Tauri removes its temporary staging app for DMG-only builds.
+- The GitHub repository API returned HTTP 200 and confirms the repository is public, as required by the unauthenticated update check.
+
+- Frontend production build and typecheck passed.
+- Chromium: all seven UI scenarios passed, including the two new update scenarios.
+- WebKit: all seven UI scenarios passed outside the sandbox, which blocks the test server's listening socket.
+- Rust: eight tests passed, two opt-in filesystem/scan tests intentionally skipped. The existing Finder-registration test requires running outside the sandbox.
+- Rust formatting and Clippy with warnings denied passed.
+- Update fixtures cover newer/equal/older versions, numeric ordering, drafts/prereleases, invalid versions, missing/null/untrusted DMG assets, 404, rate-limit errors, and invalid JSON. Browser tests block real GitHub requests.
+- Mocked desktop tests verify keyboard download activation, the exact `open_update` command, manual retry, native-launch error feedback, and continued scan availability after update-check failure.
+- No GitHub release was published. Actual GitHub delivery and the default-browser launch remain unverified; no existing app was replaced. Developer ID signing and notarization remain unconfigured.
+
+Antislop delivery gate, scoped to the new update controls:
+
+- Hard Gate PASS: new copy/assets inspected; no invented data/assets or dead controls; Chromium and WebKit tests found no horizontal overflow at 1180, 900, or 390 px in light/dark themes. Preview is explicitly disabled with an explanation; check failures provide a retry action.
+- Purpose Gate PASS: existing secondary buttons and settings rows provide the notification and retry actions; no new decoration, color, animation, or navigation pattern was introduced.
+- Liveliness PASS: retained DESIGN.md's warm macOS utility direction and energy 2/rhythm 2/motion 1; the update action shares the existing toolbar and leaves scan content as the focal point.
+- C-1 PASS: controls exist to download a discovered DMG or retry a release check.
+- C-2 PASS: mocked keyboard activation invokes `open_update`; native command accepts no arbitrary URL and uses the fixed repository DMG address.
+- C-3 PASS: application version, check status, and retry share one settings section; no unrelated sections were added.
+- C-4 PASS: both browser suites cover desktop/narrow widths and light/dark appearance; keyboard Enter works; update text contrast is 10.44:1 dark and 12.57:1 light using the skill's contrast checker.
+- C-5 PASS: installed version comes from Tauri configuration; newer-release status requires GitHub metadata and the expected DMG asset. Test screenshots contain explicit synthetic fixtures.
+- Consistency locks PASS: existing spacing, type, radius, layout, theme tokens, state treatment, and button styling are reused; no CSS or visual assets changed. `test-results/update-available.png` was visually inspected.

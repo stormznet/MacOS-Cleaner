@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "tauri": "PATH=\"$HOME/.cargo/bin:$PATH\" tauri",
     "desktop": "npm run tauri -- dev",
-    "bundle": "npm run tauri -- build --bundles app",
+    "bundle": "npm run tauri -- build --bundles dmg",
     "test": "node --test tests/ui.test.mjs",
     "test:webkit": "UI_ENGINE=webkit node --test tests/ui.test.mjs"
   },

@@ -2,6 +2,7 @@ import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { bytes, categories, escape as e, selectedItems, storageTotal, type Category, type HistoryItem, type Item, type Page, type ScanEvent, type ScanProgress, type Settings, type Summary } from './types';
 import { icon } from './icons';
+import { checkUpdate } from './updates';
 import './style.css';
 
 const desktop = isTauri();
@@ -14,6 +15,7 @@ const state = {
   scanProgress: null as ScanProgress | null,
   phase: '', warnings: [] as string[], query: '', sort: 'size', detail: null as string | null,
   error: '', ready: false,
+  updateVersion: null as string | null, checkingUpdate: false, updateStatus: '',
 };
 let toastTimer: ReturnType<typeof setTimeout>;
 let renderTimer: ReturnType<typeof setTimeout> | undefined;
@@ -44,7 +46,7 @@ function sidebar() {
     ${nav('apps', 'Uninstall an app', 'app', '', 'apps')}
     ${nav('history', 'Cleanup history', 'history')}
     ${nav('settings', 'Settings', 'settings')}
-  </nav><div class="sidebar-bottom">${icon('shield')}<span>On your Mac. Only your Mac.<small>Mac Cleaner · 0.1.0</small></span></div></aside>`;
+  </nav><div class="sidebar-bottom">${icon('shield')}<span>Your files stay on your Mac.<small>Mac Cleaner · ${e(__APP_VERSION__)}</small></span></div></aside>`;
 }
 
 function scanButton() {
@@ -53,7 +55,18 @@ function scanButton() {
     : `<button class="button scan-button" data-action="scan" ${disable()}>${icon('scan')} ${state.summary ? 'Scan again' : 'Scan my Mac'}</button>`;
 }
 function toolbar(title: string) {
-  return `<header class="toolbar" data-drag><span>${title}</span><div>${!desktop ? '<span class="preview-label">Browser preview</span>' : ''}${scanButton()}</div></header>${progress()}`;
+  return `<header class="toolbar" data-drag><span>${title}</span><div>${!desktop ? '<span class="preview-label">Browser preview</span>' : ''}${state.updateVersion ? '<button class="button secondary" data-action="update">Update available</button>' : ''}${scanButton()}</div></header>${progress()}`;
+}
+
+async function refreshUpdate() {
+  if (!desktop || state.checkingUpdate) return;
+  state.checkingUpdate = true; state.updateStatus = 'Checking for updates…'; render();
+  try {
+    state.updateVersion = await checkUpdate();
+    state.updateStatus = state.updateVersion ? `Version ${state.updateVersion} is available. Open the DMG, quit Mac Cleaner, then drag the new app into Applications.` : 'You’re up to date. No newer stable DMG is available.';
+  } catch {
+    state.updateStatus = 'Could not check for updates. Check your connection and try again.';
+  } finally { state.checkingUpdate = false; render(); }
 }
 function warningPanel() {
   return state.warnings.length ? `<details class="warnings"><summary>${icon('info')} ${state.warnings.length} scan notice${state.warnings.length === 1 ? '' : 's'}. Some locations could not be scanned.</summary><ul>${state.warnings.map(w => `<li>${e(w)}</li>`).join('')}</ul><button class="button secondary" data-page="settings">Review folders and permissions</button></details>` : '';
@@ -131,6 +144,7 @@ function historyPage() {
 
 function settingsPage() {
   return `${toolbar('Settings')}<div class="content settings-content"><h1>Make yourself at home.</h1><p class="subtitle">A few preferences. Everything stays on this Mac.</p>
+    <section class="settings-section" aria-labelledby="updates-title"><h2 id="updates-title">Application updates</h2><p>Installed version: ${e(__APP_VERSION__)}. Checks GitHub for new releases; your files and cleanup history stay on this Mac.</p><div class="permission-row"><div><p aria-live="polite">${e(desktop ? state.updateStatus || 'Check for a newer stable release.' : 'Update checks are available in the desktop app.')}</p></div><button class="button secondary" data-action="check-update" ${!desktop || state.checkingUpdate ? 'disabled' : ''}>${state.checkingUpdate ? 'Checking…' : 'Check for updates'}</button></div></section>
     <section class="settings-section"><div class="section-title"><div><h2>Project folders</h2><p>Look for node_modules only where you choose.</p></div><button class="button secondary" data-action="add-root" ${disable()}>${icon('plus')} Add folder</button></div><div class="root-list">${state.settings.roots.length ? state.settings.roots.map((root, index) => `<div>${icon('folder')}<span class="file-path">${e(root)}</span><button class="icon-button" data-action="remove-root" data-index="${index}" aria-label="Remove ${e(root)} from scan folders" ${disable()}>${icon('close')}</button></div>`).join('') : '<p>No project folders added yet. Your home folder is never searched recursively by default.</p>'}</div></section>
     <section class="settings-section permissions-section" aria-labelledby="permissions-title"><h2 id="permissions-title">Permissions</h2><p>Allow Mac Cleaner to read the folders you want to scan. macOS manages these permissions in System Settings.</p>
       <div class="permission-row"><div><h3>Files & Folders</h3><p>Open Privacy & Security → Files & Folders and allow Mac Cleaner to access Documents, Desktop, or Downloads as needed. If it is not listed, add your project folder above first.</p></div><button class="button secondary" data-action="privacy-settings" ${disable()}>Open Privacy & Security</button></div>
@@ -250,6 +264,10 @@ app.addEventListener('click', async event => {
       applyAppearance(); render(); return;
     }
     switch (target.dataset.action) {
+      case 'check-update': await refreshUpdate(); break;
+      case 'update':
+        if (desktop && state.updateVersion) { await invoke('open_update'); notify('Opening the DMG download in your browser. Quit Mac Cleaner before replacing it in Applications.'); }
+        break;
       case 'scan': await startScan(); break;
       case 'cancel': await invoke('cancel_scan'); state.phase = 'Stopping scan…'; render(); break;
       case 'add-root': { const scanAfter = state.page === 'node'; if (await addRoot() && scanAfter) await startScan(); break; }
@@ -295,5 +313,6 @@ async function init() {
     catch (error) { state.error = String(error); }
   } else { state.ready = true; }
   applyAppearance(); render();
+  if (desktop) void refreshUpdate();
 }
 void init();

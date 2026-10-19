@@ -19,6 +19,7 @@ fn main() {
             "restore_item",
             "reveal_item",
             "open_trash",
+            "open_update",
             "open_privacy_settings",
         ]),
     ))

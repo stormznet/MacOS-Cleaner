@@ -77,6 +77,12 @@ int mc_open_trash(void) {
     }
 }
 
+int mc_open_update(void) {
+    @autoreleasepool {
+        return [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/stormznet/MacOS-Cleaner/releases/latest/download/MacCleaner-arm64.dmg"]];
+    }
+}
+
 int mc_open_privacy_settings(int full_disk_access) {
     @autoreleasepool {
         NSString *address = full_disk_access

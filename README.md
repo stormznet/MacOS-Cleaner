@@ -19,15 +19,15 @@ The npm desktop scripts include `~/.cargo/bin` in their PATH. Install Rust from 
 npm run bundle
 ```
 
-The application is written to `src-tauri/target/release/bundle/macos/Mac Cleaner.app`. The prepared package is `release/MacCleaner-0.1.0-arm64.zip`, with an ad-hoc signature verified for local use. This is a local development build, without Developer ID signing or notarization. Public distribution requires an Apple signing identity and notarization.
+The installer is written to `src-tauri/target/release/bundle/dmg/` as a `.dmg` containing Mac Cleaner.app and an Applications shortcut. No ZIP is created. This is a local development build, without Developer ID signing or notarization. Public distribution requires an Apple signing identity and notarization.
 
 `npm run dev` opens the frontend development server. A regular browser shows an empty preview and cannot scan, uninstall, or modify files. Use the desktop app for filesystem operations.
 
 ## GitHub builds and releases
 
-[Build and release](.github/workflows/build.yml) runs on branch pushes, pull requests, and manual dispatches. It builds the Apple Silicon app on macOS, verifies its ad-hoc signature, and uploads `MacCleaner-macos-arm64` under the workflow run's artifacts. The artifact contains `MacCleaner-<version>-arm64.zip`.
+[Build and release](.github/workflows/build.yml) runs on branch pushes, pull requests, and manual dispatches. It builds the Apple Silicon app on macOS, verifies its ad-hoc signature, and uploads `MacCleaner-macos-arm64` under the workflow run's artifacts. The artifact contains `MacCleaner-arm64.dmg`.
 
-Pushing a `v*` tag also publishes a GitHub Release with the ZIP and generated release notes. The tag must match `src-tauri/tauri.conf.json` (currently `v0.1.0`); a mismatched tag fails before building. Tags containing a hyphen, such as `v0.2.0-beta.1`, are marked as prereleases. Before bumping a release, keep the versions in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, the lockfiles, and the UI version text in sync.
+Pushing a `v*` tag also publishes a GitHub Release with the DMG and generated release notes. The tag must match `src-tauri/tauri.conf.json` (currently `v0.1.0`); a mismatched tag fails before building. Tags containing a hyphen, such as `v0.2.0-beta.1`, are marked as prereleases. Before bumping a release, keep the versions in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and the lockfiles in sync. The UI version is read from the Tauri configuration at build time.
 
 After committing the release version and pushing that commit to GitHub:
 
@@ -37,6 +37,12 @@ git push origin v0.1.0
 ```
 
 The release job uses the built-in `GITHUB_TOKEN`; no extra repository secrets are needed. These builds are ad-hoc signed and are not notarized. macOS may require approval in Privacy & Security before opening them.
+
+## Application updates
+
+The desktop app checks the public GitHub repository for a newer stable release on startup. **Update available** appears in the toolbar when that release includes `MacCleaner-arm64.dmg`. Settings also offers **Check for updates**, with loading, up-to-date, and retry/error feedback. Preview mode makes no update requests.
+
+Click the update button to open the latest DMG download in your default browser. Open the DMG, quit Mac Cleaner, and drag the new app into Applications to replace the installed copy. Settings and cleanup history remain in Application Support. This is a manual installation; the app does not replace itself or restart automatically. GitHub checks send no scan results, file paths, or history; offline/rate-limit failures do not block cleanup. Private repositories require a separate authenticated distribution solution.
 
 ## Use
 

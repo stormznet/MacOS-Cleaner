@@ -31,7 +31,7 @@ Open `http://127.0.0.1:1420`. Preview data starts empty and native operations ar
 | `build` | `tsc --noEmit && vite build` | Strict typecheck and frontend production build |
 | `tauri` | `PATH="$HOME/.cargo/bin:$PATH" tauri` | Tauri CLI with the conventional Rust installation directory in PATH |
 | `desktop` | `npm run tauri -- dev` | Native development app with Vite |
-| `bundle` | `npm run tauri -- build --bundles app` | Release `.app` bundle, including frontend build |
+| `bundle` | `npm run tauri -- build --bundles dmg` | Release `.dmg` installer, including frontend build |
 | `test` | `node --test tests/ui.test.mjs` | Chromium UI suite |
 | `test:webkit` | `UI_ENGINE=webkit node --test tests/ui.test.mjs` | WebKit UI suite |
 
@@ -47,11 +47,11 @@ Open `http://127.0.0.1:1420`. Preview data starts empty and native operations ar
 - Main window 1180 × 800, minimum 900 × 620, overlay title bar, hidden title text.
 - Vite development URL and `../dist` production frontend.
 - Main-window capability and content-security policy.
-- `.app` bundle target, PNG/ICNS icons, macOS 13 minimum.
+- `.dmg` bundle target, PNG/ICNS icons, macOS 13 minimum.
 
 The SVG in `src-tauri/icons/` is the editable source; the PNG and ICNS are the configured bundle assets. If changing the app icon, regenerate its packaged forms as well. If changing the application identifier, account for the changed application-data directory and self-exclusion in `scan.rs`. There is currently no migration for an old identifier's history.
 
-Version text exists in `package.json`, `Cargo.toml`, `tauri.conf.json`, and the sidebar in `main.ts`; corresponding lockfiles and release filenames also need attention when changing a release version.
+Release versions in `package.json`, `Cargo.toml`, `tauri.conf.json`, and corresponding lockfiles must agree. Vite injects the Tauri version into the UI and update comparison at build time. The published DMG keeps the fixed name `MacCleaner-arm64.dmg`, used by the update button.
 
 ## Testing
 
@@ -66,10 +66,12 @@ npm run test:webkit
 
 The test file uses Node's built-in test runner with Playwright browser APIs/assertions. It starts its own Vite server on `127.0.0.1:1427`, launches the selected engine, creates `test-results/`, and closes browser/server afterward. A separate running desktop app or port-1420 server is unnecessary.
 
-Five scenarios in [tests/ui.test.mjs](../tests/ui.test.mjs) cover:
+Seven scenarios in [tests/ui.test.mjs](../tests/ui.test.mjs) cover:
 
 | Scenario | Main assertions |
 | --- | --- |
+| Update metadata | Newer/equal/older numeric versions, stable-only releases, missing or untrusted DMG assets, malformed responses, unavailable releases, and API errors |
+| Update controls | Startup detection, keyboard download action, manual retry, download failures, enabled scan controls, dark/light layouts at 1180/900/390 px |
 | Scan progress | Indeterminate discovery, 0/25/50/99/100% updates, monotonic handling of reordered counts, visibility across page navigation, completion with notices, empty scan, cancellation, and command failure |
 | Scrolled details | Lower-row heading/controls visible at 1180/900/390 px, sticky desktop behavior, preserved inner scroll across rerenders, access to the end of long details, no page overflow, focus/visibility restored to the original row on close |
 | Browser preview | Empty state, disabled empty selection, native-access explanation, category/tool navigation, three appearance modes, no overflow at 390 px on selected screens, no page errors |
@@ -129,21 +131,25 @@ Do not use a blanket `--include-ignored` unless both opt-in behaviors are intend
 npm run bundle
 ```
 
-Output: `src-tauri/target/release/bundle/macos/Mac Cleaner.app`. This is a macOS application bundle; the configured build does not produce a DMG or automatically create the prepared ZIP.
+Output: a `.dmg` under `src-tauri/target/release/bundle/dmg/`, containing the `.app` and an Applications shortcut. Tauri removes the temporary `.app` staging folder for DMG-only builds. No ZIP packaging step is used.
 
-The existing local package was ad-hoc signed, signature-checked, and archived with this sequence:
+For an ad-hoc signed local build without Finder layout automation:
 
 ```sh
-codesign --force --sign - --identifier com.maccleaner.desktop 'src-tauri/target/release/bundle/macos/Mac Cleaner.app'
-codesign --verify --deep --strict --verbose=2 'src-tauri/target/release/bundle/macos/Mac Cleaner.app'
-mkdir -p release
-ditto -c -k --sequesterRsrc --keepParent 'src-tauri/target/release/bundle/macos/Mac Cleaner.app' release/MacCleaner-0.1.0-arm64.zip
-unzip -t release/MacCleaner-0.1.0-arm64.zip
+APPLE_SIGNING_IDENTITY='-' npm run bundle -- --ci
+dmg='src-tauri/target/release/bundle/dmg/Mac Cleaner_0.1.0_aarch64.dmg'
+hdiutil verify "$dmg"
+dmg_mount=$(mktemp -d)
+hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$dmg_mount"
+codesign --verify --deep --strict --verbose=2 "$dmg_mount/Mac Cleaner.app"
+hdiutil detach "$dmg_mount"
 ```
 
-The filename assumes the validated Apple Silicon build. Rebuilding or changing the bundle means preparing/checking a fresh archive. Developer ID signing, notarization, and Gatekeeper distribution validation have not been completed. No automatic updater is implemented.
+The filename above assumes Apple Silicon and version 0.1.0. Developer ID signing, notarization, and Gatekeeper distribution validation have not been completed.
 
-The [GitHub workflow](../.github/workflows/build.yml) automates the Apple Silicon build, ad-hoc signing, signature verification, and ZIP packaging. CI builds use the explicit `aarch64-apple-darwin` target, so their app is under `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/`. Branch pushes, pull requests, and manual runs upload the ZIP as a workflow artifact; pushing a matching `v*` version tag also publishes it as a GitHub Release. See the [release instructions](../README.md#github-builds-and-releases). The workflow does not run the test suites listed above.
+The [GitHub workflow](../.github/workflows/build.yml) builds for `aarch64-apple-darwin`, verifies the disk image and the signature of the app mounted from it, and copies the DMG to `release/MacCleaner-arm64.dmg`. Branch pushes, pull requests, and manual runs upload it as a workflow artifact; pushing a matching `v*` tag also publishes it as a GitHub Release. GitHub wraps workflow artifact downloads in its own archive; the release asset itself is a DMG. The workflow does not run the test suites listed above.
+
+The desktop update check fetches the latest stable release from the public GitHub API. It requires a strictly newer version and the expected DMG asset/URL before showing the update button. The native `open_update` command opens only a fixed HTTPS URL for that repository's latest DMG, without accepting a URL from the frontend. Users install it manually; no updater signing keys, self-installation, or restart flow are used. Keep this URL, the frontend repository URL, and the workflow's DMG filename aligned if moving the repository. See the [update instructions](../README.md#application-updates).
 
 ## Where to make changes
 

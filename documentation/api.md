@@ -19,6 +19,7 @@ JavaScript invokes snake_case command names with camelCase argument keys. Rust s
 | `trash_items` | `{ ids: string[] }` | `Record[]` | Current scan IDs only; 1–10,000 submitted entries; validates all before movement; returns the complete history, including per-item failures |
 | `restore_item` | `{ id: string }` | `Record[]` | History ID, not scan ID; reconciles then restores one available item; may return a record with an error after a failed filesystem move |
 | `reveal_item` | `{ id: string }` | Void | Resolves a scan ID first, then history ID; reveals the original location for restored history, otherwise its recorded Trash location |
+| `open_update` | None | Void | Opens the fixed latest-release DMG URL in the default browser; accepts no caller URL; reports native launch failure |
 | `open_trash` | None | Void | Opens `~/.Trash` in Finder; reports failure if the native request is rejected |
 | `open_privacy_settings` | `{ fullDiskAccess: boolean }` | Void | Opens the fixed Full Disk Access URL when true, otherwise Privacy & Security; never enables permissions or accepts a caller-provided URL |
 

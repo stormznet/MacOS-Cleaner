@@ -55,6 +55,7 @@ Paths below are relative to the project root. Generated dependency/build directo
 | --- | --- | --- |
 | [index.html](../index.html) | Application mount, review dialog, live toast region, frontend entry script | [Frontend](frontend.md) |
 | [src/main.ts](../src/main.ts) | UI state, screen templates, rendering, events, IPC orchestration | [Frontend](frontend.md) |
+| [src/updates.ts](../src/updates.ts) | Public GitHub release check, numeric version comparison, expected DMG validation, timeout | [Frontend](frontend.md) |
 | [src/types.ts](../src/types.ts) | Frontend models, category metadata, size formatting, escaping, selection/total helpers | [Frontend](frontend.md), [data](api.md) |
 | [src/icons.ts](../src/icons.ts) | Local SVG icon paths and `icon()` helper | [Frontend](frontend.md) |
 | [src/style.css](../src/style.css) | Layouts, component states, responsive rules, focus, reduced motion | [Frontend](frontend.md) |
@@ -80,7 +81,7 @@ Paths below are relative to the project root. Generated dependency/build directo
 | [tsconfig.json](../tsconfig.json) | Strict TypeScript checking, ES2022, bundler module resolution, no emitted JS | [Development](development.md) |
 | [vite.config.ts](../vite.config.ts) | Port 1420, strict port use, Rust-directory watch exclusion, Safari 16 output target | [Development](development.md) |
 | [tests/ui.test.mjs](../tests/ui.test.mjs) | Node test runner, Playwright browser checks, synthetic IPC fixtures | [Development](development.md) |
-| [.gitignore](../.gitignore) | Excludes dependencies, build outputs, screenshots, reports, release ZIPs | [Development](development.md) |
+| [.gitignore](../.gitignore) | Excludes dependencies, build outputs, screenshots, reports, release installers | [Development](development.md) |
 | [README.md](../README.md) | Quick start and high-level behavior | [Index](README.md) |
 | [PLAN.md](../PLAN.md) | Original plan and implementation-status context | [Index](README.md) |
 | [DESIGN.md](../DESIGN.md) | Design direction | [Frontend](frontend.md) |

@@ -140,6 +140,11 @@ fn open_trash() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_update() -> Result<(), String> {
+    native::open_update()
+}
+
+#[tauri::command]
 fn open_privacy_settings(full_disk_access: bool) -> Result<(), String> {
     native::open_privacy_settings(full_disk_access)
 }
@@ -163,6 +168,7 @@ fn main() {
             restore_item,
             reveal_item,
             open_trash,
+            open_update,
             open_privacy_settings
         ])
         .run(tauri::generate_context!())

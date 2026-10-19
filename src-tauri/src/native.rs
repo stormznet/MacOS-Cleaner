@@ -10,6 +10,7 @@ extern "C" {
     fn mc_is_running(identifier: *const libc::c_char) -> libc::c_int;
     fn mc_reveal(path: *const libc::c_char) -> libc::c_int;
     fn mc_open_trash() -> libc::c_int;
+    fn mc_open_update() -> libc::c_int;
     fn mc_open_privacy_settings(full_disk_access: libc::c_int) -> libc::c_int;
 }
 
@@ -103,6 +104,14 @@ pub fn open_trash() -> Result<(), String> {
 pub fn open_privacy_settings(full_disk_access: bool) -> Result<(), String> {
     if unsafe { mc_open_privacy_settings(i32::from(full_disk_access)) } == 0 {
         Err("Could not open System Settings. Open Privacy & Security from the Apple menu.".into())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn open_update() -> Result<(), String> {
+    if unsafe { mc_open_update() } == 0 {
+        Err("Could not open the update download in your browser. Try again.".into())
     } else {
         Ok(())
     }

@@ -44,20 +44,23 @@ jobs:
           APPLE_SIGNING_IDENTITY: '-'
         run: npm run bundle -- --ci --target aarch64-apple-darwin -- --locked
 
-      - name: Package application
+      - name: Verify and package DMG
         env:
           APP_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          app='src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Mac Cleaner.app'
-          codesign --verify --deep --strict --verbose=2 "$app"
+          dmg="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Mac Cleaner_${APP_VERSION}_aarch64.dmg"
+          hdiutil verify "$dmg"
+          dmg_mount=$(mktemp -d)
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$dmg_mount"
+          trap 'hdiutil detach "$dmg_mount" >/dev/null' EXIT
+          codesign --verify --deep --strict --verbose=2 "$dmg_mount/Mac Cleaner.app"
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent "$app" "release/MacCleaner-$APP_VERSION-arm64.zip"
-          unzip -t "release/MacCleaner-$APP_VERSION-arm64.zip"
+          cp "$dmg" release/MacCleaner-arm64.dmg
 
       - uses: actions/upload-artifact@v7
         with:
           name: MacCleaner-macos-arm64
-          path: release/*.zip
+          path: release/*.dmg
           if-no-files-found: error
 
   release:
@@ -80,6 +83,6 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           PRERELEASE: ${{ contains(github.ref_name, '-') }}
         run: |
-          gh release create "$RELEASE_TAG" release/*.zip \
+          gh release create "$RELEASE_TAG" release/*.dmg \
             --verify-tag --generate-notes \
             --title "Mac Cleaner $RELEASE_TAG" --prerelease="$PRERELEASE"

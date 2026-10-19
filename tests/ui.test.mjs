@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit, expect } from '@playwright/test';
 import { createServer } from 'vite';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 
 let server, browser;
 before(async () => {
@@ -13,8 +13,102 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await server?.close(); });
 
+const updateApi = 'https://api.github.com/repos/stormznet/MacOS-Cleaner/releases/latest';
+async function newPage(options) {
+  const page = await browser.newPage(options);
+  await page.route(updateApi, route => route.fulfill({ status: 404, json: {} }));
+  return page;
+}
+
+test('update checks require a newer stable version and the trusted DMG asset', async () => {
+  const page = await newPage();
+  await page.goto('http://127.0.0.1:1427');
+  const { version } = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url)));
+  const [major, minor] = version.split('.').map(Number);
+  const next = `${major + 1}.0.0`;
+  const release = value => ({ tag_name: `v${value}`, draft: false, prerelease: false, assets: [{
+    name: 'MacCleaner-arm64.dmg', browser_download_url: `https://github.com/stormznet/MacOS-Cleaner/releases/download/v${value}/MacCleaner-arm64.dmg`,
+  }] });
+  let reply;
+  await page.route(updateApi, route => route.fulfill(reply));
+  const cases = [
+    [release(next), next], [release(`${major}.${minor + 10}.0`), `${major}.${minor + 10}.0`],
+    [release(version), null], [release('0.0.0'), null],
+    [{ ...release(next), prerelease: true }, null], [{ ...release(next), draft: true }, null],
+    [release(`${next}-beta.1`), null], [release('invalid'), null], [release('999999999999999999.0.0'), null],
+    [{ ...release(next), assets: [] }, null], [{ ...release(next), assets: [null] }, null],
+    [{ ...release(next), assets: [{ name: 'MacCleaner-arm64.dmg', browser_download_url: 'https://example.com/untrusted.dmg' }] }, null],
+    [null, null],
+  ];
+  for (const [json, expected] of cases) {
+    reply = { json };
+    assert.equal(await page.evaluate(async () => (await import('/src/updates.ts')).checkUpdate()), expected);
+  }
+  reply = { status: 404, json: {} };
+  assert.equal(await page.evaluate(async () => (await import('/src/updates.ts')).checkUpdate()), null);
+  for (const failure of [{ status: 403, json: {} }, { body: 'invalid JSON', contentType: 'application/json' }]) {
+    reply = failure;
+    assert.equal(await page.evaluate(async () => {
+      try { await (await import('/src/updates.ts')).checkUpdate(); return false; } catch { return true; }
+    }), true);
+  }
+  await page.close();
+});
+
+test('desktop update button opens the DMG and supports retry without blocking scans', async () => {
+  const page = await newPage({ viewport: { width: 1180, height: 800 } });
+  const { version } = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url)));
+  const next = `${Number(version.split('.')[0]) + 1}.0.0`;
+  let status = 200;
+  await page.route(updateApi, route => route.fulfill({ status, json: {
+    tag_name: `v${next}`, assets: [{ name: 'MacCleaner-arm64.dmg', browser_download_url: `https://github.com/stormznet/MacOS-Cleaner/releases/download/v${next}/MacCleaner-arm64.dmg` }],
+  } }));
+  await page.addInitScript(() => {
+    window.isTauri = true; window.commands = []; window.failDownload = false;
+    window.__TAURI_INTERNALS__ = { invoke: async (command, args) => {
+      window.commands.push(command);
+      if (command === 'bootstrap') return { settings: { roots: [], appearance: 'dark' }, history: [] };
+      if (command === 'set_appearance') return { roots: [], appearance: args.appearance };
+      if (command === 'open_update') { if (window.failDownload) throw new Error('Could not open the update download'); return; }
+      throw new Error(`Unexpected command: ${command}`);
+    } };
+  });
+  await page.goto('http://127.0.0.1:1427');
+  const update = page.getByRole('button', { name: 'Update available', exact: true });
+  await expect(update).toBeVisible();
+  await update.focus(); await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => window.commands), ['bootstrap', 'open_update']);
+  await expect(page.getByRole('status')).toContainText('Opening the DMG');
+  await page.locator('nav [data-page=settings]').click();
+  await expect(page.locator('[aria-labelledby=updates-title]')).toContainText(`Version ${next} is available`);
+  for (const theme of ['dark', 'light']) {
+    await page.locator(`button[data-theme=${theme}]`).click();
+    for (const width of [1180, 900, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.locator('.main-scroll').evaluate(element => { element.scrollTop = 0; });
+      await expect(update).toBeInViewport();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    }
+  }
+  await page.screenshot({ path: 'test-results/update-available.png' });
+  status = 403;
+  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(page.locator('[aria-labelledby=updates-title]')).toContainText('Could not check');
+  await expect(page.getByRole('button', { name: 'Scan my Mac', exact: true })).toBeEnabled();
+  await expect(update).toBeVisible();
+  await page.evaluate(() => { window.failDownload = true; });
+  await update.click();
+  await expect(page.getByRole('alert')).toContainText('Could not open the update download');
+  status = 404;
+  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(page.locator('[aria-labelledby=updates-title]')).toContainText('You’re up to date');
+  await expect(update).toHaveCount(0);
+  await page.close();
+});
+
+
 test('scan progress covers discovery, percentages, errors, cancellation, and an empty scan', async () => {
-  const page = await browser.newPage({ viewport: { width: 1180, height: 800 } });
+  const page = await newPage({ viewport: { width: 1180, height: 800 } });
   await page.addInitScript(() => {
     window.isTauri = true;
     window.__TAURI_INTERNALS__ = {
@@ -72,7 +166,7 @@ test('scan progress covers discovery, percentages, errors, cancellation, and an 
 
 test('details stay visible for lower rows and preserve reading position across renders', async () => {
   for (const width of [1180, 900, 390]) {
-    const page = await browser.newPage({ viewport: { width, height: 800 }, colorScheme: 'dark' });
+    const page = await newPage({ viewport: { width, height: 800 }, colorScheme: 'dark' });
     await page.addInitScript(() => {
       window.isTauri = true;
       window.__TAURI_INTERNALS__ = {
@@ -121,7 +215,7 @@ test('details stay visible for lower rows and preserve reading position across r
 });
 
 test('browser preview: honest empty state, navigation, appearance, and narrow layout', async () => {
-  const page = await browser.newPage({ viewport: { width: 1180, height: 800 }, colorScheme: 'dark' });
+  const page = await newPage({ viewport: { width: 1180, height: 800 }, colorScheme: 'dark' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:1427');
   await expect(page.getByRole('heading', { name: 'Make room for what’s next.' })).toBeVisible();
@@ -154,7 +248,7 @@ test('browser preview: honest empty state, navigation, appearance, and narrow la
 
 test('first scan chooses project scope, handles cancellation and failure, and opens permission settings', async () => {
   for (const mode of ['choose', 'cancel', 'error']) {
-    const page = await browser.newPage({ viewport: { width: 1180, height: 800 } });
+    const page = await newPage({ viewport: { width: 1180, height: 800 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(pickMode => {
       window.isTauri = true;
@@ -224,7 +318,7 @@ test('first scan chooses project scope, handles cancellation and failure, and op
 });
 
 test('selection, app association, review confirmation, failures, and restore through mocked IPC', async () => {
-  const page = await browser.newPage({ viewport: { width: 1180, height: 800 }, colorScheme: 'dark' });
+  const page = await newPage({ viewport: { width: 1180, height: 800 }, colorScheme: 'dark' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
     window.isTauri = true;
