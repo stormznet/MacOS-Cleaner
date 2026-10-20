@@ -97,8 +97,8 @@ These checks compile native macOS code. Running the default suite executes eight
 | `cache_owners_match_names_and_updaters_without_guessing_shared_owners` | Bundle IDs, ShipIt parent IDs, name aliases, ASCII case, ambiguous names, and rejection of arbitrary prefixes/suffixes |
 | `resolves_registered_apps_and_handles_missing_metadata` | Native registered-app lookup, missing/NUL-containing identifiers, empty-display-name fallback to bundle name |
 | `progress_counts_failed_checks_and_stops_advancing_after_cancellation` | Fixed total, progress for both readable/missing candidates, incomplete-item safety, cancellation freezes counts, serialized progress event shape |
-| `discovers_only_project_dependencies_and_never_follows_symlinks` | One outer dependency candidate, orphan notice, hidden/symlink exclusion, allocated size, measurement cancellation |
-| `discovers_renamed_dependencies_without_nested_or_unrelated_candidates` | Timestamped/numbered copies, invalid suffix rejection, no nested/orphan/symlink/hidden candidates, root exclusions, preserved lockfile |
+| `discovers_dependencies_without_manifests_and_never_follows_symlinks` | Outer dependency candidates with and without a parent manifest, no orphan skip notice, nested/hidden/symlink exclusion, allocated size, measurement cancellation |
+| `discovers_renamed_dependencies_without_nested_or_unrelated_candidates` | Timestamped/numbered copies with and without parent manifests, invalid suffix rejection, no nested/symlink/hidden candidates, root exclusions, preserved lockfile |
 | `rejects_bundle_identifiers_that_could_escape_related_data_paths` | Unsafe bundle-ID forms, accepted valid form, relative and parent-traversal path rejection |
 | `rejects_changed_items_symlinks_and_overlapping_selections` | Replacement identity, symlink ancestry, overlap rejection, retained fixture content |
 | `restores_without_overwrite_and_reconciles_interrupted_moves` | Locate a timestamp-renamed directory in test Trash by identity, preserve destination conflict, restore the original `node_modules` name and bytes, recognize interrupted restore |

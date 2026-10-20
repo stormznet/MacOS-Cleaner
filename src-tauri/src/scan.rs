@@ -245,17 +245,7 @@ pub fn discover_nodes(
                 .and_then(|s| s.to_str())
                 .is_some_and(is_node_modules_name)
             {
-                if path
-                    .parent()
-                    .is_some_and(|p| p.join("package.json").is_file())
-                {
-                    found.push(path);
-                } else {
-                    warnings.push(format!(
-                        "Skipped {}: no parent package.json",
-                        path.display()
-                    ));
-                }
+                found.push(path);
             } else if !hidden_or_bundle(&path) {
                 dirs.push(path);
             }
@@ -550,6 +540,10 @@ pub fn run(state: &AppState, emit: impl Fn(ScanEvent) + Sync) -> Result<Summary,
                             item.description = "Renamed dependency folder, possibly returned from Trash or kept as a copy. Review its contents before removing it. Source files, package.json, and lockfiles outside this folder stay in place.".into();
                             item.consequence = "Only this renamed folder will be moved to Trash. Local changes inside it will be removed. Stop any process using it first.".into();
                         }
+                        if !path.parent().is_some_and(|p| p.join("package.json").is_file()) {
+                            item.description = "Dependency folder without a parent package.json, possibly left by a backup or removed project. Review its contents before removing it.".into();
+                            item.consequence = "Only this folder will be moved to Trash, including any local changes inside it. Reinstalling may require recovering the missing package.json. Stop any process using it first.".into();
+                        }
                         add(item);
                     }
                 }
@@ -776,7 +770,7 @@ mod tests {
     }
 
     #[test]
-    fn discovers_only_project_dependencies_and_never_follows_symlinks() {
+    fn discovers_dependencies_without_manifests_and_never_follows_symlinks() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         fs::create_dir_all(root.join("project/node_modules/a/node_modules")).unwrap();
@@ -787,13 +781,16 @@ mod tests {
         std::os::unix::fs::symlink(root.join("project"), root.join("linked")).unwrap();
         let mut warnings = vec![];
         let cancel = AtomicBool::new(false);
+        let mut found = discover_nodes(root, &cancel, &mut warnings);
+        found.sort();
         assert_eq!(
-            discover_nodes(root, &cancel, &mut warnings),
-            vec![root.join("project/node_modules")]
+            found,
+            vec![
+                root.join("orphan/node_modules"),
+                root.join("project/node_modules")
+            ]
         );
-        assert!(warnings
-            .iter()
-            .any(|w| w.contains("no parent package.json")));
+        assert!(warnings.is_empty(), "{warnings:?}");
         assert!(measure(&root.join("project/node_modules"), &cancel).unwrap() > 0);
         cancel.store(true, Ordering::Relaxed);
         assert!(measure(&root.join("project"), &cancel).is_err());
@@ -849,11 +846,11 @@ mod tests {
         let mut warnings = vec![];
         let mut found = discover_nodes(&root, &AtomicBool::new(false), &mut warnings);
         found.sort();
-        let mut expected = names.map(|name| root.join(name));
+        let mut expected: Vec<_> = names.map(|name| root.join(name)).into();
+        expected.push(root.join("orphan/node_modules 10-58-12-759"));
         expected.sort();
         assert_eq!(found, expected);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("no parent package.json"));
+        assert!(warnings.is_empty(), "{warnings:?}");
         assert!(validate_root(&root, &home).is_ok());
         assert_eq!(
             fs::read_to_string(root.join("package-lock.json")).unwrap(),

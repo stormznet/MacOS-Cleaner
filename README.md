@@ -62,7 +62,7 @@ Nothing is selected automatically. Moving files to Trash does not immediately fr
 
 - Xcode DerivedData and the recognized Xcode cache. Archives, simulators, runtimes, and source projects are excluded.
 - npm, Yarn, pnpm, and Bun download-cache locations. Package-manager stores outside the explicit supported locations are excluded.
-- node_modules and timestamped/numbered copies (such as `node_modules 10-58-12-759`) under user-selected project roots with a parent package.json. Each folder is a separate candidate, including its nested dependencies; parent manifests and lockfiles are kept.
+- node_modules and timestamped/numbered copies (such as `node_modules 10-58-12-759`) under user-selected project roots, including folders without a parent package.json. Each folder is a separate candidate, including its nested dependencies; parent manifests and lockfiles are kept. Missing manifests are flagged in the item details for review.
 - Per-app caches matched by bundle ID, unique app names, and ShipIt updater IDs, with a macOS application lookup fallback. Unconfirmed owners can be inspected but cannot be selected.
 - Ordinary non-Apple app bundles in /Applications and ~/Applications, including subfolders up to two levels deep. Exact bundle-identifier preferences, support folders, and saved state appear as separate optional items. Shared vendor data and containers are excluded. Apps with privileged helpers, extensions, or vendor uninstallers need their vendor's removal workflow.
 - Persistent cleanup history, native Trash movement, interruption reconciliation by file identity, and restoration with atomic no-overwrite behavior.

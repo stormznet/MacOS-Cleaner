@@ -32,7 +32,7 @@ Here, `~` means the current user's home folder. These locations are fixed in [sc
 
 | Category | Discovered locations | What removal means |
 | --- | --- | --- |
-| node_modules | `node_modules` and supported timestamped/numbered copies under chosen project roots, with a `package.json` file in the immediate parent | Reinstall active dependencies before using the project; local edits inside any selected dependency directory go with it |
+| node_modules | `node_modules` and supported timestamped/numbered copies under chosen project roots, including folders without a parent `package.json` | Reinstall active dependencies before using the project; a missing manifest may need recovery first; local edits inside any selected dependency directory go with it |
 | Xcode | Immediate children of `~/Library/Developer/Xcode/DerivedData`; `~/Library/Caches/com.apple.dt.Xcode` | Xcode may rebuild, reindex, or regenerate cached data |
 | Package caches: npm | `~/.npm/_cacache` | Packages may need downloading again |
 | Package caches: Yarn | `~/Library/Caches/Yarn` | Packages may need downloading again |
@@ -49,7 +49,7 @@ Names include `node_modules`, numbered copies such as `node_modules 2`, and time
 
 Mac Cleaner's History → Restore uses the recorded original path even if macOS assigned a different name in Trash. A folder already returned under a timestamped name is now discoverable on the next scan. Restore never replaces an existing original folder or silently creates a differently named copy.
 
-Discovery skips hidden directories, `.app`, `.bundle`, and `.photoslibrary` directories, symbolic-link directories, other devices, and cloud placeholder directories. A dependency directory without a parent `package.json` is skipped with a notice. The manifest is checked for existence, not parsed to validate the project.
+Discovery skips hidden directories, `.app`, `.bundle`, and `.photoslibrary` directories, symbolic-link directories, other devices, and cloud placeholder directories. A dependency directory without a parent `package.json` remains a candidate. Its details flag the missing manifest and explain that reinstalling may require recovering it. The manifest is checked for existence, not parsed to validate the project.
 
 The whole home folder is not searched recursively by default. Choose a reasonably scoped projects folder; very large trees can take longer to discover and measure.
 

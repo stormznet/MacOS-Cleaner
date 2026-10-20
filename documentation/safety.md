@@ -54,7 +54,7 @@ The app does not discover/remove all vendor components, shared support directori
 | --- | --- |
 | Browser Scan says filesystem access requires desktop | Run `npm run desktop` or open the built `.app`; a browser preview intentionally cannot scan |
 | node_modules shows Not scanned | No project folder is configured. Use Add folder & scan on node_modules; Scan also prompts for a folder when none is configured |
-| No node_modules results inside a configured root | Confirm the chosen folder contains the project and check scan notices/Settings → Permissions; candidates need an immediate parent `package.json`; hidden/bundle/symlink/other-device subtrees are skipped |
+| No node_modules results inside a configured root | Confirm the chosen folder contains the dependency folder and check scan notices/Settings → Permissions; a parent `package.json` is optional; hidden/bundle/symlink/other-device subtrees are skipped |
 | Project folder is rejected | Choose a real directory within home, outside Library, Applications, Trash, `.git`, and dependency directories; other devices are unsupported |
 | Unknown owner / disabled checkbox | The item is inspection-only; inspect the path in Finder rather than assuming it is safe to remove |
 | Calculating or Incomplete | Wait for scan completion, or rescan after cancellation/access problems; incomplete candidates cannot be cleaned |
