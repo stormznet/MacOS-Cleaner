@@ -51,7 +51,7 @@ Click the update button to open the latest DMG download in your default browser.
 1. Scan prompts for a project folder when none is configured. You can also add folders in Settings, or use **Add folder & scan** on node_modules. Cancelling the picker scans other categories and marks node_modules **Not scanned**.
 2. Scan your Mac. The progress bar shows discovery first, then a percentage of items checked once the total is known. It reaches 100% when the scan finishes. Stop scan keeps the partial percentage and results.
 3. Open a category. Inspect a row's path, explanation, and removal consequences, then select its checkbox. Details stay visible beside scrolled desktop lists and scroll into view on narrow layouts; long details scroll independently.
-4. Review the exact selection, quit affected apps and stop builds, then move the selected items to Trash.
+4. Review the exact selection. Use **Quit selected apps** to request a normal quit for known owning apps, respond to any save prompts, and stop builds. Confirm once the apps have closed, then move the selected items to Trash. A refused or cancelled quit keeps the files and scan results available for retry.
 5. Use Cleanup history to restore an item. Existing files are never overwritten. Open Trash in Finder when you want to permanently remove its contents yourself.
 
 Nothing is selected automatically. Moving files to Trash does not immediately free their disk space.

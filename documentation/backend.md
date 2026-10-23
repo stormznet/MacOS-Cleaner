@@ -134,6 +134,7 @@ The final move uses `renamex_np(..., RENAME_EXCL)`. This provides an atomic no-o
 | `app_info()` | `mc_app_info` | Reads `Contents/Info.plist`; extracts bundle identifier, nonempty display/name fallback, bundle name, and short version when values are strings |
 | `app_name_for_bundle()` | `mc_app_for_bundle` | Looks up an app URL using `NSWorkspace`, rejects Trash/non-app paths, verifies its on-disk bundle ID, and returns its name; missing/stale/invalid results stay unrecognized |
 | `running()` | `mc_is_running` | `NSRunningApplication` lookup by bundle identifier |
+| `quit()` | `mc_quit_app` | Requests normal `NSRunningApplication` termination for a validated selection's owning bundle; returns the number of requests sent, not completed exits. Protects Mac Cleaner and core desktop processes; never force-quits. |
 | `reveal()` | `mc_reveal` | `NSWorkspace` Finder selection request |
 | `open_trash()` | `mc_open_trash` | `NSWorkspace` opens the home Trash URL |
 | `open_privacy_settings()` | `mc_open_privacy_settings` | `NSWorkspace` opens one of two fixed System Settings URLs: Privacy & Security or Full Disk Access, selected by a boolean |

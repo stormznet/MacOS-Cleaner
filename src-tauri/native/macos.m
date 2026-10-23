@@ -64,6 +64,26 @@ int mc_is_running(const char *identifier) {
     }
 }
 
+char *mc_quit_app(const char *identifier) {
+    @autoreleasepool {
+        NSString *bundle = @(identifier);
+        if ([@[@"com.maccleaner.desktop", @"com.apple.finder", @"com.apple.dock", @"com.apple.loginwindow", @"com.apple.SystemUIServer"] containsObject:bundle]) {
+            return json(@{@"error": @"This app cannot be quit from Mac Cleaner. Deselect its files to continue."});
+        }
+        NSUInteger requested = 0;
+        for (NSRunningApplication *app in [NSRunningApplication runningApplicationsWithBundleIdentifier:bundle]) {
+            if (app.processIdentifier == NSProcessInfo.processInfo.processIdentifier) {
+                return json(@{@"error": @"Mac Cleaner cannot quit itself during cleanup."});
+            }
+            if ([app terminate]) requested++;
+            else if (!app.terminated) {
+                return json(@{@"error": [NSString stringWithFormat:@"Could not ask %@ to quit. Quit it from its own menu, then retry.", app.localizedName ?: bundle]});
+            }
+        }
+        return json(@{@"requested": @(requested)});
+    }
+}
+
 int mc_reveal(const char *path) {
     @autoreleasepool {
         [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:@(path)]]];

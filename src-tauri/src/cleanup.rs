@@ -27,6 +27,31 @@ fn validate(item: &Item, home: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub fn quit_selected(state: &AppState, ids: &[String]) -> Result<u64, String> {
+    if ids.is_empty() || ids.len() > 10_000 {
+        return Err("Select between 1 and 10,000 items".into());
+    }
+    let store = state.store.lock().map_err(|e| e.to_string())?;
+    let mut bundles = HashSet::new();
+    for id in ids {
+        let item = store
+            .items
+            .get(id)
+            .ok_or("A selected item is no longer in the scan; scan again")?;
+        if !item.selectable || !item.complete {
+            return Err("This item is not eligible for cleanup".into());
+        }
+        if let Some(bundle) = &item.bundle_id {
+            bundles.insert(bundle);
+        }
+    }
+    let mut requested = 0;
+    for bundle in bundles {
+        requested += native::quit(bundle)?;
+    }
+    Ok(requested)
+}
+
 pub fn trash_selected(state: &AppState, ids: &[String]) -> Result<Vec<Record>, String> {
     if ids.is_empty() || ids.len() > 10_000 {
         return Err("Select between 1 and 10,000 items".into());
@@ -262,6 +287,62 @@ mod tests {
             version: None,
             identity: path_identity(path).unwrap(),
         }
+    }
+
+    #[test]
+    fn quit_validates_the_entire_selection_and_preserves_scan_and_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let path = root.join("cache");
+        fs::create_dir(&path).unwrap();
+        let mut item = candidate(&path, &root);
+        item.bundle_id = Some("invalid.maccleaner.fixture-not-installed".into());
+        let state = AppState::new(root.clone(), root.join("state")).unwrap();
+        state
+            .store
+            .lock()
+            .unwrap()
+            .items
+            .insert(item.id.clone(), item.clone());
+        assert!(quit_selected(&state, &[]).is_err());
+        assert!(quit_selected(&state, &vec![item.id.clone(); 10_001]).is_err());
+        assert_eq!(
+            quit_selected(&state, &[item.id.clone(), item.id.clone()]).unwrap(),
+            0
+        );
+        for (complete, selectable) in [(false, true), (true, false)] {
+            item.complete = complete;
+            item.selectable = selectable;
+            state
+                .store
+                .lock()
+                .unwrap()
+                .items
+                .insert(item.id.clone(), item.clone());
+            assert!(quit_selected(&state, &[item.id.clone()])
+                .unwrap_err()
+                .contains("not eligible"));
+        }
+        item.complete = true;
+        item.selectable = true;
+        item.bundle_id = Some("com.apple.finder".into());
+        state
+            .store
+            .lock()
+            .unwrap()
+            .items
+            .insert(item.id.clone(), item.clone());
+        // Invalid IDs must fail before any native quit request, even for earlier entries.
+        assert!(quit_selected(&state, &[item.id.clone(), "missing".into()])
+            .unwrap_err()
+            .contains("no longer in the scan"));
+        assert!(quit_selected(&state, &[item.id.clone()])
+            .unwrap_err()
+            .contains("cannot be quit"));
+        let store = state.store.lock().unwrap();
+        assert_eq!(store.items.len(), 1);
+        assert!(store.saved.history.is_empty());
+        assert_eq!(path_identity(&path).unwrap(), item.identity);
     }
 
     #[test]

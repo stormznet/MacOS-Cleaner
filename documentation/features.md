@@ -100,6 +100,7 @@ This removes ordinary app bundles and their detected associated files. It does n
 - Clicking an item name opens details; the checkbox controls selection.
 - Details stay beside the results on desktop, including the 900 px minimum window width. On narrow layouts they scroll into view when opened. Long details have their own scrolling area, whose position is preserved when the UI updates. Closing details returns keyboard focus and visibility to the original row.
 - **Keep files**, the dialog close button, or Escape closes the review without moving anything.
+- **Quit selected apps** appears in desktop review when selected items have known owning apps. It requests a normal quit; respond to save prompts and confirm once the apps close. It never force-quits. If an app stays open, cleanup remains blocked and the scan and selection stay available for retry.
 
 ## Cleanup history and restore
 

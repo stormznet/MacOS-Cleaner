@@ -224,6 +224,7 @@ dialog > p { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .review-list small { display: block; color: var(--faint); font-size: 10px; margin-top: 6px; }
 .review-list p { color: var(--muted); font-size: 11px; margin-top: 8px; }
 .acknowledgement { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; line-height: 1.5; }
+.quit-apps { margin-bottom: 18px; }
 .acknowledgement input { margin-top: 2px; }
 dialog .dialog-footnote { font-size: 10px; color: var(--faint); margin-top: 14px; }
 .dialog-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 25px; }

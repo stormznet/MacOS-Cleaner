@@ -11,7 +11,7 @@ const dialog = document.querySelector<HTMLDialogElement>('#review')!;
 const state = {
   page: 'overview' as Page, items: [] as Item[], selected: new Set<string>(),
   settings: { roots: [], appearance: 'system' } as Settings, history: [] as HistoryItem[],
-  busy: '' as '' | 'folder' | 'scan' | 'trash' | 'restore' | 'permissions', summary: null as Summary | null,
+  busy: '' as '' | 'folder' | 'scan' | 'quit' | 'trash' | 'restore' | 'permissions', summary: null as Summary | null,
   scanProgress: null as ScanProgress | null,
   phase: '', warnings: [] as string[], query: '', sort: 'size', detail: null as string | null,
   error: '', ready: false,
@@ -225,25 +225,48 @@ async function startScan() {
 function showReview() {
   const chosen = selection(); if (!chosen.length || state.busy) return;
   reviewIds = chosen.map(i => i.id);
-  dialog.innerHTML = `<div class="dialog-heading"><span class="tile history">${icon('trash')}</span><button class="icon-button" data-dialog="close" aria-label="Close review">${icon('close')}</button></div><h2 id="review-title">Move ${chosen.length} ${chosen.length === 1 ? 'item' : 'items'} to Trash?</h2><p>${bytes(storageTotal(chosen))} selected. You can restore these items from History while they remain in Trash.</p><div class="review-list">${chosen.map(item => `<div><strong>${e(item.name)}<span>${bytes(item.bytes)}</span></strong><small class="file-path">${e(item.path)}</small><p>${e(item.consequence)}</p></div>`).join('')}</div><label class="acknowledgement"><input id="acknowledge" type="checkbox">I’ve quit affected apps and stopped builds or installations.</label><p class="dialog-footnote">Disk space becomes available after you empty Trash in Finder.</p><div class="dialog-actions"><button class="button secondary" data-dialog="close">Keep files</button><button class="button primary" data-dialog="confirm" disabled>Move ${chosen.length} to Trash</button></div>`;
+  dialog.innerHTML = `<div class="dialog-heading"><span class="tile history">${icon('trash')}</span><button class="icon-button" data-dialog="close" aria-label="Close review">${icon('close')}</button></div><h2 id="review-title">Move ${chosen.length} ${chosen.length === 1 ? 'item' : 'items'} to Trash?</h2><p>${bytes(storageTotal(chosen))} selected. You can restore these items from History while they remain in Trash.</p><div class="review-list">${chosen.map(item => `<div><strong>${e(item.name)}<span>${bytes(item.bytes)}</span></strong><small class="file-path">${e(item.path)}</small><p>${e(item.consequence)}</p></div>`).join('')}</div>${desktop && chosen.some(item => item.bundleId) ? '<section class="quit-apps"><button class="button secondary" data-dialog="quit">Quit selected apps</button><p id="quit-status" class="dialog-footnote" role="status">Ask the apps that own these items to quit. Save any open work before continuing.</p></section>' : ''}<label class="acknowledgement"><input id="acknowledge" type="checkbox">I’ve quit affected apps and stopped builds or installations.</label><p class="dialog-footnote">Disk space becomes available after you empty Trash in Finder.</p><div class="dialog-actions"><button class="button secondary" data-dialog="close">Keep files</button><button class="button primary" data-dialog="confirm" disabled>Move ${chosen.length} to Trash</button></div>`;
   dialog.showModal();
+}
+
+async function quitSelectedApps() {
+  if (!desktop || state.busy) return;
+  const button = dialog.querySelector<HTMLButtonElement>('[data-dialog="quit"]')!;
+  const status = dialog.querySelector<HTMLElement>('#quit-status')!;
+  const acknowledge = dialog.querySelector<HTMLInputElement>('#acknowledge')!;
+  state.busy = 'quit'; button.disabled = true; acknowledge.disabled = true; acknowledge.checked = false;
+  dialog.querySelector<HTMLButtonElement>('[data-dialog="confirm"]')!.disabled = true;
+  status.textContent = 'Requesting apps to quit…'; render();
+  try {
+    const requested = await invoke<number>('quit_apps', { ids: reviewIds });
+    status.textContent = requested
+      ? 'Quit requested. Respond to any save prompts, then confirm below once the apps have closed.'
+      : 'No selected apps are running. Stop any builds or installations, then confirm below.';
+  } catch (error) {
+    status.textContent = String(error);
+  } finally {
+    state.busy = ''; button.disabled = false; acknowledge.disabled = false; render();
+  }
 }
 
 async function confirmTrash() {
   if (!document.querySelector<HTMLInputElement>('#acknowledge')?.checked || state.busy) return;
-  dialog.close(); state.busy = 'trash'; render();
+  const previousRecords = new Set(state.history.map(item => item.id));
+  dialog.close(); state.busy = 'trash'; state.error = ''; render();
   try {
     state.history = await invoke<HistoryItem[]>('trash_items', { ids: reviewIds });
-    const moved = state.history.filter(h => h.status === 'trashed');
-    const paths = new Set(moved.map(h => h.original));
-    state.items = state.items.filter(item => !paths.has(item.path));
-    state.selected.clear(); state.page = 'history';
+    state.page = 'history';
     notify('Cleanup finished. Review each result in History.');
   } catch (error) {
     state.error = String(error);
-    try { const data = await invoke<{ history: HistoryItem[] }>('bootstrap'); state.history = data.history; state.page = 'history'; state.selected.clear(); state.items = []; }
+    try { const data = await invoke<{ history: HistoryItem[] }>('bootstrap'); state.history = data.history; }
     catch { /* Preserve the original operation error if history is also unavailable. */ }
-  } finally { state.busy = ''; render(); }
+  } finally {
+    const paths = new Set(state.history.filter(item => !previousRecords.has(item.id) && item.status === 'trashed').map(item => item.original));
+    state.items = state.items.filter(item => !paths.has(item.path));
+    state.selected = new Set(state.items.filter(item => state.selected.has(item.id)).map(item => item.id));
+    state.busy = ''; render();
+  }
 }
 
 async function addRoot() {
@@ -330,8 +353,8 @@ app.addEventListener('click', async event => {
   } catch (error) { state.error = String(error); render(); }
 });
 app.addEventListener('mousedown', event => { if (desktop && (event.target as HTMLElement).hasAttribute('data-drag')) void getCurrentWindow().startDragging(); });
-dialog.addEventListener('change', () => { const button = dialog.querySelector<HTMLButtonElement>('[data-dialog="confirm"]'); if (button) button.disabled = !dialog.querySelector<HTMLInputElement>('#acknowledge')?.checked; });
-dialog.addEventListener('click', event => { const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.dialog; if (action === 'close') dialog.close(); if (action === 'confirm') void confirmTrash(); });
+dialog.addEventListener('change', () => { const button = dialog.querySelector<HTMLButtonElement>('[data-dialog="confirm"]'); if (button) button.disabled = !!state.busy || !dialog.querySelector<HTMLInputElement>('#acknowledge')?.checked; });
+dialog.addEventListener('click', event => { const action = (event.target as HTMLElement).closest<HTMLElement>('button')?.dataset.dialog; if (action === 'close') dialog.close(); if (action === 'quit') void quitSelectedApps(); if (action === 'confirm') void confirmTrash(); });
 window.addEventListener('focus', () => {
   if (state.recheckPermissions && !state.busy) { state.recheckPermissions = false; void refreshPermissions(); }
 });

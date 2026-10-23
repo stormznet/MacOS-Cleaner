@@ -5,7 +5,7 @@
   "permissions": [
     "core:window:allow-start-dragging",
     "allow-bootstrap", "allow-scan", "allow-cancel-scan", "allow-choose-root",
-    "allow-remove-root", "allow-set-appearance", "allow-trash-items", "allow-restore-item",
+    "allow-remove-root", "allow-set-appearance", "allow-quit-apps", "allow-trash-items", "allow-restore-item",
     "allow-reveal-item", "allow-open-trash", "allow-open-update", "allow-open-privacy-settings", "allow-check-permissions"
   ]
 }

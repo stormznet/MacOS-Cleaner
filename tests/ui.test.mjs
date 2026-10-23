@@ -481,6 +481,159 @@ test('app selection includes associated data and caches, with individual opt-out
   await page.close();
 });
 
+test('review requests a normal quit only on demand and preserves selection when an app stays open', async () => {
+  const page = await newPage();
+  await page.addInitScript(() => {
+    window.isTauri = true;
+    window.commands = [];
+    const items = ['app', 'cache', 'unselected'].map(id => ({
+      id, name: id, category: id === 'cache' ? 'caches' : 'apps', path: `/Users/test/fixtures/${id}`, root: '/Users/test/fixtures',
+      bytes: 100, modified: 1750000000, description: 'Fixture', consequence: 'Fixture removal', complete: true,
+      selectable: true, issue: null, bundleId: id === 'unselected' ? 'invalid.other' : 'invalid.selected',
+      appParent: id === 'cache' ? 'app' : null, version: null,
+    }));
+    let quits = 0, moves = 0;
+    window.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1, unregisterCallback: () => {},
+      invoke: async (command, args) => {
+        window.commands.push({ command, ids: args?.ids });
+        if (command === 'bootstrap') return { settings: { appearance: 'system', roots: ['/Users/test/projects'] }, history: [] };
+        if (command === 'scan') {
+          for (const item of items) args.onEvent.onmessage({ kind: 'item', item });
+          return { count: items.length, elapsedMs: 100, cancelled: false, warnings: [] };
+        }
+        if (command === 'quit_apps') {
+          quits++;
+          if (quits === 1) return new Promise((resolve, reject) => { window.rejectQuit = reject; });
+          return quits === 2 ? 1 : 0;
+        }
+        if (command === 'trash_items') {
+          if (++moves === 1) throw 'Quit the owning app before moving this item to Trash';
+          return args.ids.map(id => ({ id: `record-${id}`, operation: 'test', name: id, original: items.find(item => item.id === id).path,
+            bytes: 100, timestamp: 1750000000, trashPath: `/Users/test/.Trash/${id}`, status: 'trashed', error: null }));
+        }
+        return null;
+      },
+    };
+  });
+  await page.goto('http://127.0.0.1:1427');
+  await page.getByRole('button', { name: 'Scan my Mac', exact: true }).click();
+  await page.locator('nav [data-page=apps]').click();
+  await page.getByRole('checkbox', { name: 'Select app', exact: true }).check();
+  await page.locator('[data-action=review]').click();
+  assert.equal(await page.evaluate(() => window.commands.some(c => c.command === 'quit_apps')), false);
+  const acknowledge = page.getByRole('checkbox', { name: 'I’ve quit affected apps and stopped builds or installations.' });
+  const move = page.getByRole('button', { name: 'Move 2 to Trash', exact: true });
+  const quit = page.getByRole('button', { name: 'Quit selected apps', exact: true });
+  await acknowledge.check();
+  await quit.click();
+  await expect(quit).toBeDisabled();
+  await expect(move).toBeDisabled();
+  await expect(acknowledge).toBeDisabled();
+  await expect(acknowledge).not.toBeChecked();
+  await page.evaluate(() => window.rejectQuit('Could not ask app to quit. Quit it from its own menu, then retry.'));
+  await expect(page.locator('#quit-status')).toContainText('Could not ask app to quit');
+  await expect(quit).toBeEnabled();
+  await expect(acknowledge).toBeEnabled();
+  await quit.click();
+  await expect(page.locator('#quit-status')).toContainText('Respond to any save prompts');
+  await expect(move).toBeDisabled();
+  assert.equal(await page.evaluate(() => window.commands.some(c => c.command === 'trash_items')), false);
+  await acknowledge.check();
+  await move.click();
+  await expect(page.getByRole('alert')).toContainText('Quit the owning app');
+  await expect(page.getByRole('checkbox', { name: 'Select app', exact: true })).toBeChecked();
+  await page.locator('[data-action=review]').click();
+  await quit.click();
+  await expect(page.locator('#quit-status')).toContainText('No selected apps are running');
+  await acknowledge.check();
+  await move.click();
+  await expect(page.locator('.history-row')).toHaveCount(2);
+  const commands = await page.evaluate(() => window.commands);
+  assert.equal(commands.filter(c => c.command === 'scan').length, 1);
+  assert.deepEqual(commands.filter(c => c.command === 'quit_apps').map(c => c.ids), [['app', 'cache'], ['app', 'cache'], ['app', 'cache']]);
+  await page.locator('nav [data-page=apps]').click();
+  await expect(page.locator('.item-row')).toHaveCount(1);
+  await expect(page.getByRole('checkbox', { name: 'Select unselected', exact: true })).not.toBeChecked();
+  await page.close();
+});
+
+test('Trash errors preserve scan results and selection for retry, including partial moves and history failures', async () => {
+  for (const scenario of ['running-app', 'history-unavailable', 'partial-move']) {
+    const page = await newPage();
+    await page.addInitScript(scenario => {
+      window.isTauri = true;
+      window.commands = [];
+      const items = ['blocked', 'other', 'unselected'].map(id => ({
+        id, name: id, category: 'caches', path: `/Users/test/Library/Caches/${id}`, root: '/Users/test/Library/Caches',
+        bytes: 100, modified: 1750000000, description: 'Fixture cache', consequence: 'Rebuild cache',
+        complete: true, selectable: true, issue: null, bundleId: null, appParent: null, version: null,
+      }));
+      const record = (id, recordId, status = 'trashed') => ({
+        id: recordId, operation: recordId, name: id, original: items.find(item => item.id === id).path,
+        trashPath: `/Users/test/.Trash/${recordId}`, bytes: 100, timestamp: 1750000000, status, error: null,
+      });
+      // A cache may have been recreated at a previously trashed path before this scan.
+      let history = [record('blocked', 'older-cleanup')];
+      let attempted = false;
+      window.__TAURI_INTERNALS__ = {
+        transformCallback: () => 1, unregisterCallback: () => {},
+        invoke: async (command, args) => {
+          window.commands.push({ command, ids: args?.ids });
+          if (command === 'bootstrap') {
+            if (attempted && scenario === 'history-unavailable') throw 'History unavailable';
+            history = history.map(item => ({ ...item, status: 'trashed' }));
+            return { settings: { appearance: 'system', roots: ['/Users/test/projects'] }, history };
+          }
+          if (command === 'scan') {
+            for (const item of items) args.onEvent.onmessage({ kind: 'item', item });
+            return { count: items.length, elapsedMs: 100, cancelled: false, warnings: ['Fixture scan notice'] };
+          }
+          if (command === 'trash_items') {
+            if (!attempted) {
+              attempted = true;
+              if (scenario === 'partial-move') history = [...history, record('other', 'partial', 'pending')];
+              throw 'Quit the owning app before moving this item to Trash';
+            }
+            history = [...history, ...args.ids.map(id => record(id, `retry-${id}`))];
+            return history;
+          }
+          return null;
+        },
+      };
+    }, scenario);
+    await page.goto('http://127.0.0.1:1427');
+    await page.getByRole('button', { name: 'Scan my Mac', exact: true }).click();
+    await page.locator('nav [data-page=caches]').click();
+    await page.getByRole('checkbox', { name: 'Select blocked', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Select other', exact: true }).check();
+    const confirm = async count => {
+      await page.locator('[data-action=review]').click();
+      await page.getByRole('checkbox', { name: 'I’ve quit affected apps and stopped builds or installations.' }).check();
+      await page.getByRole('button', { name: `Move ${count} to Trash`, exact: true }).click();
+    };
+    await confirm(2);
+    await expect(page.getByRole('alert')).toContainText('Quit the owning app before moving this item to Trash');
+    await expect(page.locator('[data-action=review]')).toBeEnabled();
+    await expect(page.locator('.item-row')).toHaveCount(scenario === 'partial-move' ? 2 : 3);
+    await expect(page.getByRole('checkbox', { name: 'Select blocked', exact: true })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Select unselected', exact: true })).not.toBeChecked();
+    if (scenario !== 'partial-move') await expect(page.getByRole('checkbox', { name: 'Select other', exact: true })).toBeChecked();
+    await expect(page.locator('.scan-progress')).toContainText('Scan complete with notices');
+    await confirm(scenario === 'partial-move' ? 1 : 2);
+    await expect(page.locator('.history-row').filter({ hasText: 'blocked' })).toHaveCount(2);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page.locator('nav [data-page=caches]').click();
+    await expect(page.locator('.item-row')).toHaveCount(1);
+    await expect(page.locator('.item-row')).toContainText('unselected');
+    await expect(page.locator('.selection-footer')).toContainText('0 items selected');
+    assert.equal(await page.evaluate(() => window.commands.filter(c => c.command === 'scan').length), 1);
+    assert.deepEqual(await page.evaluate(() => window.commands.filter(c => c.command === 'trash_items').at(-1).ids),
+      scenario === 'partial-move' ? ['blocked'] : ['blocked', 'other']);
+    await page.close();
+  }
+});
+
 test('selection, app association, review confirmation, failures, and restore through mocked IPC', async () => {
   const page = await newPage({ viewport: { width: 1180, height: 800 }, colorScheme: 'dark' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -544,6 +697,7 @@ test('selection, app association, review confirmation, failures, and restore thr
   await page.getByRole('button', { name: 'Close details' }).click();
   await page.getByRole('button', { name: 'Review 1.95 GB' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Quit selected apps', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Move 1 to Trash', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();

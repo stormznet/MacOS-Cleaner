@@ -59,7 +59,7 @@ The app does not discover/remove all vendor components, shared support directori
 | Unknown owner / disabled checkbox | The item is inspection-only; inspect the path in Finder rather than assuming it is safe to remove |
 | Calculating or Incomplete | Wait for scan completion, or rescan after cancellation/access problems; incomplete candidates cannot be cleaned |
 | Item changed since scanning | Stop writers and run a fresh scan; do not reuse the previous selection |
-| Quit the owning app | Quit the identified app before moving/restoring its data; also stop related tools or builds manually |
+| Quit the owning app | In cleanup review, use **Quit selected apps**, respond to save prompts, and retry once the apps close. You can also quit the app manually. Stop related tools/builds manually; restore still requires quitting the owning app first. |
 | Another operation is still running | Let the active operation finish; Stop scan applies only to scanning |
 | Cleanup returns an error after some moves | Check every history row and Trash before retrying; some earlier items may already have moved |
 | Needs inspection | The native move outcome could not be verified; use Finder and allow startup reconciliation to inspect recorded identity |

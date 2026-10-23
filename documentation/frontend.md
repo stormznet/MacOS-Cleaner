@@ -22,7 +22,7 @@ The frontend uses TypeScript and the DOM directly. There is no React component t
 | `items` | Streamed scan items, updated by ID |
 | `selected` | `Set<string>` of explicitly selected scan IDs |
 | `settings`, `history` | Frontend copies of backend state |
-| `busy` | Empty string, `folder`, `scan`, `trash`, or `restore`; drives disabled controls and progress |
+| `busy` | Empty string, `folder`, `scan`, `quit`, `trash`, `restore`, or `permissions`; drives disabled controls and progress |
 | `summary` | Final scan result, initially null |
 | `scanProgress` | Latest fixed total and maximum processed-item count; null during discovery and reset for each scan |
 | `phase`, `warnings` | Live scan message and collected notices |
@@ -78,7 +78,9 @@ The storage chart uses each category's estimated bytes as its flex weight. The s
 
 `showReview()` takes a fresh selection snapshot and builds the dialog from exact names, paths, estimates, and consequences. Confirm starts disabled until the affected-apps/builds acknowledgement is checked. The dialog sits outside `#app`, so normal root renders do not replace it.
 
-`confirmTrash()` rechecks acknowledgement/busy state, closes the dialog, and invokes `trash_items` with `reviewIds`. On success it replaces history, removes rows at paths represented by trashed history, clears selection, and navigates to history. On command rejection it keeps the error and attempts `bootstrap` reconciliation; successful reconciliation clears potentially stale scan rows and shows history. If reconciliation also fails, the original operation error is retained.
+`quitSelectedApps()` invokes `quit_apps` with the review IDs only when the user presses **Quit selected apps**. It clears the acknowledgement and disables confirmation while the request runs. The dialog reports requested quits, no running owners, or an error; the user must handle save prompts and confirm again. Selecting an item alone never quits an app.
+
+`confirmTrash()` rechecks acknowledgement/busy state, closes the dialog, and invokes `trash_items` with `reviewIds`. Success replaces history and navigates to history. Command rejection keeps the current page and error while attempting `bootstrap` reconciliation. In either case, only paths confirmed trashed by newly added history records are removed from the scan and selection. Remaining rows, selections, and scan progress survive for retry. If reconciliation also fails, the original operation error and scan results are retained.
 
 `addRoot()` holds the frontend `folder` busy state while invoking the native picker, assigns returned settings, and returns whether the roots changed. It always releases busy in `finally`. The node_modules **Add folder & scan** handler starts a scan when a folder was added; Settings only updates roots. A cancelled picker returns false without a misleading success notification.
 

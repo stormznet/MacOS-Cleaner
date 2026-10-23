@@ -8,6 +8,7 @@ extern "C" {
     fn mc_app_info(path: *const libc::c_char) -> *mut libc::c_char;
     fn mc_app_for_bundle(identifier: *const libc::c_char) -> *mut libc::c_char;
     fn mc_is_running(identifier: *const libc::c_char) -> libc::c_int;
+    fn mc_quit_app(identifier: *const libc::c_char) -> *mut libc::c_char;
     fn mc_reveal(path: *const libc::c_char) -> libc::c_int;
     fn mc_open_trash() -> libc::c_int;
     fn mc_open_update() -> libc::c_int;
@@ -85,6 +86,14 @@ pub fn running(identifier: &str) -> bool {
     CString::new(identifier).is_ok_and(|s| unsafe { mc_is_running(s.as_ptr()) != 0 })
 }
 
+pub fn quit(identifier: &str) -> Result<u64, String> {
+    let bundle = CString::new(identifier).map_err(|e| e.to_string())?;
+    let value = unsafe { response(mc_quit_app(bundle.as_ptr()))? };
+    value["requested"]
+        .as_u64()
+        .ok_or_else(|| "macOS returned no quit result".into())
+}
+
 pub fn reveal(path: &Path) -> Result<(), String> {
     let path = c_path(path)?;
     unsafe {
@@ -120,6 +129,21 @@ pub fn open_update() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quit_handles_absent_apps_and_rejects_protected_apps_and_invalid_identifiers() {
+        assert_eq!(quit("invalid.maccleaner.fixture-not-installed").unwrap(), 0);
+        assert!(quit("bad\0identifier").is_err());
+        for bundle in [
+            "com.maccleaner.desktop",
+            "com.apple.finder",
+            "com.apple.dock",
+            "com.apple.loginwindow",
+            "com.apple.SystemUIServer",
+        ] {
+            assert!(quit(bundle).unwrap_err().contains("cannot be quit"));
+        }
+    }
 
     #[test]
     fn resolves_registered_apps_and_handles_missing_metadata() {

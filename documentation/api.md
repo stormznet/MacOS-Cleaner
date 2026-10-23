@@ -17,6 +17,7 @@ JavaScript invokes snake_case command names with camelCase argument keys. Rust s
 | `remove_root` | `{ index: number }` | `Settings` | Zero-based settings-root index; rejects an invalid index; clears registry and saves |
 | `set_appearance` | `{ appearance: 'system' \| 'light' \| 'dark' }` | `Settings` | Rejects other strings; persists appearance under the store lock |
 | `trash_items` | `{ ids: string[] }` | `Record[]` | Current scan IDs only; 1–10,000 submitted entries; validates all before movement; returns the complete history, including per-item failures |
+| `quit_apps` | `{ ids: string[] }` | Number of quit requests sent | Validates current, complete, selectable scan IDs and deduplicates owning bundle IDs; requests normal termination only. A request does not guarantee exit; save prompts or cancellation may keep an app running. Does not move files or clear scan results. Mac Cleaner and core desktop processes are protected. |
 | `restore_item` | `{ id: string }` | `Record[]` | History ID, not scan ID; reconciles then restores one available item; may return a record with an error after a failed filesystem move |
 | `reveal_item` | `{ id: string }` | Void | Resolves a scan ID first, then history ID; reveals the original location for restored history, otherwise its recorded Trash location |
 | `open_update` | None | Void | Opens the fixed latest-release DMG URL in the default browser; accepts no caller URL; reports native launch failure |

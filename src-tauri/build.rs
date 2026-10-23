@@ -15,6 +15,7 @@ fn main() {
             "choose_root",
             "remove_root",
             "set_appearance",
+            "quit_apps",
             "trash_items",
             "restore_item",
             "reveal_item",

@@ -94,6 +94,12 @@ fn set_appearance(state: State<AppState>, appearance: String) -> Result<Settings
 }
 
 #[tauri::command]
+fn quit_apps(state: State<AppState>, ids: Vec<String>) -> Result<u64, String> {
+    let _guard = state.start()?;
+    cleanup::quit_selected(&state, &ids)
+}
+
+#[tauri::command]
 async fn trash_items(app: AppHandle, ids: Vec<String>) -> Result<Vec<Record>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -178,6 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             choose_root,
             remove_root,
             set_appearance,
+            quit_apps,
             trash_items,
             restore_item,
             reveal_item,
